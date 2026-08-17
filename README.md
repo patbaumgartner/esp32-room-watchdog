@@ -18,6 +18,8 @@ third-party service in the loop.
   than a configurable distance
 - **Sound detection** — MAX9814 mic, peak-to-peak loudness with threshold +
   cooldown so a noisy room doesn't flood your phone
+- **Lossless audio streaming** — authenticated 48kHz mono PCM over WiFi,
+  recorded as WAV on another computer without device-side storage
 - **Radar tuning + calibration** — per-gate sensitivity applied at boot via
   the LD2412 command protocol; background calibration on demand (BOOT button
   or HTTP API) to cancel out static room clutter
@@ -73,6 +75,8 @@ All tuning knobs live in [src/config.h](src/config.h):
 | `SOUND_PP_THRESHOLD` | `1600` | Min peak-to-peak ADC swing to count as "sound" (idle ≈ 300) |
 | `SOUND_NOTIFY_COOLDOWN_MS` | `15000` | Quiet period after a sound notification |
 | `SOUND_SAMPLE_WINDOW_MS` | `50` | Mic sampling window length |
+| `AUDIO_SAMPLE_RATE_HZ` | `48000` | Hardware-timed ADC sample rate for detection and streaming |
+| `AUDIO_STREAM_BUFFER_SAMPLES` | `8192` | Network backpressure buffer (~170ms at 48kHz) |
 | `PRESENCE_DEBOUNCE_MS` | `2000` | Radar state must hold this long before notifying |
 | `DISTANCE_DELTA_CM` | `100` | Movement needed before a "Person moved to X" update |
 | `DISTANCE_UPDATE_MIN_INTERVAL_MS` | `10000` | Min gap between movement updates |
@@ -90,16 +94,36 @@ The node serves a small LAN API on port 80:
 
 | Endpoint | Auth | Response |
 |---|---|---|
-| `GET /status` | none | Live JSON: presence, target state, moving/stationary distance + energy, mic min/max/peak-to-peak, uptime |
-| `POST /calibrate` | `X-Api-Key` header (`API_TOKEN`) | `202` — starts radar background calibration in 10s (~2 min; leave the room). `401` on a missing/wrong key |
+| `GET /status` | none | Live JSON: sensor values, audio streaming/drop state, uptime |
+| `POST /calibrate` | Bearer token or raw `API_TOKEN` body | `202` — starts radar background calibration in 10s (~2 min; leave the room). `401` on a missing/wrong key |
+| `POST /audio.pcm` | Bearer token or raw `API_TOKEN` body | Continuous 48kHz signed 16-bit little-endian mono PCM stream |
 
 ```powershell
 Invoke-RestMethod http://<device-ip>/status
-Invoke-RestMethod -Method Post -Uri http://<device-ip>/calibrate -Headers @{ 'X-Api-Key' = '<API_TOKEN>' }
+Invoke-RestMethod -Method Post -Uri http://<device-ip>/calibrate -Headers @{ Authorization = 'Bearer <API_TOKEN>' }
 ```
 
 Calibration can also be triggered on the device by holding the BOOT button
 for ~1s. The result is persisted in the radar module's flash.
+
+## Audio recording
+
+The node serves one lossless raw PCM stream at
+`http://<device-ip>/audio.pcm`. It is signed 16-bit little-endian mono at
+48kHz and requires the same token used by the calibration endpoint. The
+recording script sends it in the POST body for compatibility with the
+Arduino-ESP32 2.0 WebServer request parser.
+Install [FFmpeg](https://ffmpeg.org/), then record until you press Ctrl+C:
+
+```powershell
+./record.ps1 -DeviceIp 192.168.1.42 -ApiToken '<API_TOKEN>'
+./record.ps1 -DeviceIp 192.168.1.42 -ApiToken '<API_TOKEN>' -Output room.wav
+```
+
+The ESP32 stores no recording. `GET /status` exposes `audioStreaming` and
+`audioDroppedSamples`; the latter should remain zero. A nonzero value means
+the receiving computer or WiFi could not drain the 170ms buffer in time.
+Only one recording client is supported, and the API should remain LAN-only.
 
 ## Development
 
@@ -119,6 +143,7 @@ notification semantics: [docs/architecture.md](docs/architecture.md)
 ```
 esp32-room-watchdog/
 ├── lib/
+│   ├── audio/                # ADC bias removal + PCM conversion (unit-tested)
 │   ├── detectors/            # pure logic, no Arduino deps (unit-tested)
 │   │   ├── LevelWindow.h     #   min/max accumulator for mic sampling windows
 │   │   ├── SoundDetector.h   #   threshold + cooldown decisions
@@ -130,7 +155,8 @@ esp32-room-watchdog/
 ├── src/                      # hardware/network glue (runs on the ESP32)
 │   ├── main.cpp              #   setup/loop composition only
 │   ├── config.h              #   pins + tuning constants
-│   ├── mic.cpp / .h          #   ADC sampling windows
+│   ├── mic.cpp / .h          #   ADC DMA, level windows + PCM ring buffer
+│   ├── audio_stream.cpp / .h #   PCM response writer for POST /audio.pcm
 │   ├── radar.cpp / .h        #   UART parsing, tuning, calibration
 │   ├── notifications.cpp / .h#   detector events → push messages
 │   ├── api.cpp / .h          #   HTTP API (/status, /calibrate)
@@ -154,6 +180,7 @@ CI runs on every push/PR: native unit tests plus a full firmware build
 - [x] Hardware wired (LD2412 presence/UART + MAX9814 mic)
 - [x] WiFi connectivity + boot notification
 - [x] Sound detection with threshold/cooldown → push notification
+- [x] Lossless 48kHz PCM audio streaming over WiFi
 - [x] Person detection with debounce → push notification
 - [x] Unit tests + CI pipeline
 - [x] LD2412 UART frame parser — presence notifications include distance

@@ -15,6 +15,12 @@ namespace
 {
     uint32_t nextAttemptMs = 0;
 
+    void logWifiDisconnect(arduino_event_id_t, arduino_event_info_t info)
+    {
+        Serial.printf("WiFi: disconnected (reason %u)\n",
+                      info.wifi_sta_disconnected.reason);
+    }
+
     bool gotifyUsesTls()
     {
         return strncmp(GOTIFY_URL, "https:", 6) == 0;
@@ -47,6 +53,7 @@ namespace
 void connectWifi()
 {
     Serial.printf("WiFi: connecting to %s", WIFI_SSID);
+    WiFi.onEvent(logWifiDisconnect, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
     WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 

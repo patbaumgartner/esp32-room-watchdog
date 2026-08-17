@@ -1,5 +1,4 @@
 #pragma once
 
-// LAN HTTP API: GET /status (open) and POST /calibrate (token-protected).
+// Starts the LAN HTTP API task.
 void apiBegin();
-void apiPoll();

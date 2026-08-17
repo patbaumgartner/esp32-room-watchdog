@@ -2,6 +2,7 @@
 
 #include <WebServer.h>
 
+#include "audio_stream.h"
 #include "mic.h"
 #include "notifications.h"
 #include "radar.h"
@@ -11,15 +12,46 @@ namespace
 {
     WebServer server(80);
 
+    void apiServerTask(void *)
+    {
+        while (true)
+        {
+            server.handleClient();
+            vTaskDelay(pdMS_TO_TICKS(1));
+        }
+    }
+
     bool authorized()
     {
-        return server.header("X-Api-Key") == API_TOKEN;
+        String supplied = server.header("Authorization");
+        if (supplied.startsWith("Bearer "))
+        {
+            supplied.remove(0, 7);
+        }
+        else
+        {
+            supplied = server.header("X-Api-Key");
+        }
+        if (supplied.isEmpty() && server.hasArg("plain"))
+        {
+            supplied = server.arg("plain");
+        }
+        const bool matches = supplied == API_TOKEN;
+        if (!matches)
+        {
+            Serial.printf("api: auth rejected (header=%d, received=%u, expected=%u)\n",
+                          server.hasHeader("Authorization") || server.hasHeader("X-Api-Key") ||
+                              server.hasArg("plain"),
+                          supplied.length(),
+                          strlen(API_TOKEN));
+        }
+        return matches;
     }
 
     void handleStatus()
     {
         const Ld2412Parser::Report &radar = radarReport();
-        const LevelWindow &mic = micLastWindow();
+        const LevelWindow mic = micLastWindow();
         String json = "{";
         json += "\"presence\":" + String(radarPresenceDetected() ? "true" : "false");
         json += ",\"targetState\":" + String(radar.targetState);
@@ -30,6 +62,8 @@ namespace
         json += ",\"micPeakToPeak\":" + String(mic.peakToPeak());
         json += ",\"micMin\":" + String(mic.minLevel());
         json += ",\"micMax\":" + String(mic.maxLevel());
+        json += ",\"audioStreaming\":" + String(micPcmStreaming() ? "true" : "false");
+        json += ",\"audioDroppedSamples\":" + String(micDroppedSamples());
         json += ",\"uptimeMs\":" + String(millis());
         json += "}";
         server.send(200, "application/json", json);
@@ -39,11 +73,21 @@ namespace
     {
         if (!authorized())
         {
-            server.send(401, "application/json", "{\"error\":\"missing or wrong X-Api-Key\"}");
+            server.send(401, "application/json", "{\"error\":\"missing or wrong API token\"}");
             return;
         }
         startCalibration();
         server.send(202, "application/json", "{\"status\":\"calibration scheduled in 10s\"}");
+    }
+
+    void handleAudio()
+    {
+        if (!authorized())
+        {
+            server.send(401, "application/json", "{\"error\":\"missing or wrong API token\"}");
+            return;
+        }
+        streamAudioPcm(server.client());
     }
 }
 
@@ -55,13 +99,14 @@ void apiBegin()
 
     server.on("/status", HTTP_GET, handleStatus);
     server.on("/calibrate", HTTP_POST, handleCalibrate);
+    server.on("/audio.pcm", HTTP_POST, handleAudio);
     server.onNotFound([]
                       { server.send(404, "application/json", "{\"error\":\"not found\"}"); });
     server.begin();
-    Serial.println("api: listening on port 80 (/status, /calibrate)");
-}
-
-void apiPoll()
-{
-    server.handleClient();
+    if (xTaskCreate(apiServerTask, "http-api", 8192, nullptr, 1, nullptr) != pdPASS)
+    {
+        Serial.println("api: server task allocation failed");
+        return;
+    }
+    Serial.println("api: listening on port 80 (/status, /calibrate, /audio.pcm)");
 }

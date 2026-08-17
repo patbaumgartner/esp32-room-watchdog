@@ -85,6 +85,14 @@ had that wrong).
 - `OUT` — analog audio output
 - `A/R` — attack/release ratio select: floating = default (~1:4000), tied to GND = 1:2000, tied to VDD = 1:500
 
+For audio recording, the current 60dB gain gives the strongest signal but also
+the most noise and the least clipping headroom. Tie `GAIN` to VDD for 40dB and
+best fidelity when voices and sound sources are reasonably close, or leave it
+floating for a 50dB compromise. Changing gain also changes peak-to-peak values,
+so retune `SOUND_PP_THRESHOLD` afterward. The MAX9814 always applies automatic
+gain control, so recordings are useful for speech and room events but do not
+preserve absolute loudness dynamics.
+
 ## Cable color legend (as wired)
 
 | Color        | Signal                        | From                       | To                      |

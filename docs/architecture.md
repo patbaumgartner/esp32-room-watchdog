@@ -22,10 +22,11 @@ flowchart LR
 
     subgraph src [src/ — glue, runs on ESP32]
         LOOP[main.cpp<br/>composition only]
-        MICG[mic.cpp<br/>ADC sampling]
+        MICG[mic.cpp<br/>48kHz ADC DMA]
+        AUDIO[audio_stream.cpp<br/>PCM response writer]
         RADG[radar.cpp<br/>UART parsing + tuning]
         NOTIF[notifications.cpp<br/>events → push]
-        API[api.cpp<br/>HTTP /status + /calibrate]
+        API[api.cpp<br/>HTTP API task]
         CBTN[calibration_button.cpp<br/>hold → calibrate]
         SLOG[status_log.cpp<br/>serial diagnostics]
         NET[net.cpp<br/>WiFi + HTTP]
@@ -33,6 +34,7 @@ flowchart LR
 
     subgraph lib [lib/ — pure logic, unit-tested]
         LW[LevelWindow<br/>min/max per window]
+        PCM[PcmEncoder<br/>DC removal + signed PCM]
         SD[SoundDetector<br/>threshold + cooldown]
         PM[PresenceMonitor<br/>debounce + edges]
         DT[DistanceTracker<br/>movement deltas]
@@ -40,7 +42,8 @@ flowchart LR
         LC[Ld2412Commands<br/>command frame builders]
     end
 
-    MIC -->|analogRead| MICG --> LW
+    MIC -->|ADC1 DMA| MICG --> LW
+    MICG --> PCM --> AUDIO -->|HTTP/TCP| RECORDER[FFmpeg recorder]
     RADAR -->|digitalRead + UART| RADG --> LP
     RADG --> LC
     BTN --> CBTN
@@ -65,25 +68,38 @@ radar tuning (per-gate sensitivities via the LD2412 command protocol), WiFi
 connect, HTTP API start, and a "Sensor node online" push. Then `loop()`
 repeats forever:
 
-1. **`micSampleWindow()`** — busy-samples the ADC for `SOUND_SAMPLE_WINDOW_MS`
-   (50ms) into a `LevelWindow`. Windows run back-to-back, so a short clap
-   can't fall into a gap. The last window is kept for the HTTP API.
+1. **`micSampleWindow()`** — waits for the next 50ms `LevelWindow` produced by
+  the dedicated ADC task. Hardware-timed DMA sampling continues at 48kHz
+  while the loop performs network work, so short sounds cannot fall into a
+  scheduling gap. The last completed window is kept for the HTTP API.
 2. **`radarPoll()`** — feeds pending LD2412 UART bytes into `Ld2412Parser`
    for distance/energy reports.
 3. **`calibrationButtonPoll()`** — BOOT button held ~1s starts radar
    background calibration (also available via `POST /calibrate`).
-4. **`apiPoll()`** — serves pending HTTP requests (`GET /status`,
-   `POST /calibrate`).
-5. **`notifyPresenceChanges()`** — feeds the radar pin into `PresenceMonitor`;
+4. **`notifyPresenceChanges()`** — feeds the radar pin into `PresenceMonitor`;
    pushes "Person detected at X" / "Presence cleared" on debounced edges.
-6. **`notifyMovement()`** — while present, `DistanceTracker` pushes "Person
+5. **`notifyMovement()`** — while present, `DistanceTracker` pushes "Person
    moved to X" when the distance shifts beyond `DISTANCE_DELTA_CM`.
-7. **`notifyLoudSounds()`** — feeds the window's peak-to-peak into
+6. **`notifyLoudSounds()`** — feeds the window's peak-to-peak into
    `SoundDetector`; pushes "Sound detected" above threshold, then cools down.
-8. **`logStatusEverySecond()`** — one diagnostic line per second on serial.
+7. **`logStatusEverySecond()`** — one diagnostic line per second on serial.
 
-One pass takes ~50ms (the mic window); the only blocking extras are the rare
-HTTP pushes.
+One pass takes ~50ms because it waits for the next mic window. The ADC task
+continues independently during the occasional blocking HTTP push.
+
+## Audio pipeline
+
+The microphone task reads 12-bit ADC1 samples from DMA, updates the sound-level
+window, and passes each sample through `PcmEncoder`. The encoder tracks and
+removes the MAX9814's DC bias, then maps the complete ADC range into signed
+16-bit little-endian PCM without clipping. When a client is recording, samples
+also enter a bounded 8192-sample ring buffer.
+
+`api.cpp` authenticates `POST /audio.pcm`, then `audio_stream.cpp` drains that
+ring buffer to the HTTP client. The API runs in a dedicated task, so network
+backpressure never blocks ADC sampling or the sensor loop. When the buffer
+fills, new stream samples are dropped and counted in `audioDroppedSamples`.
+Sound detection still uses every ADC sample regardless of stream state.
 
 ## Notification semantics
 
@@ -130,11 +146,13 @@ with the send/sequence logic in `radar.cpp`:
 
 ## HTTP API
 
-`api.cpp` runs a `WebServer` on port 80, polled from the loop (no extra
-task). `GET /status` is read-only and unauthenticated; `POST /calibrate`
-requires the `X-Api-Key` header to match `API_TOKEN` from secrets.h. The API
-reuses the modules' public accessors (`radarReport()`, `micLastWindow()`)
-rather than owning any state.
+`api.cpp` runs a `WebServer` task on port 80. `GET /status` is read-only and
+unauthenticated; `POST /calibrate` and `POST /audio.pcm` require the
+an API token matching `API_TOKEN` from secrets.h. Headers are accepted, while
+the recorder uses a raw POST body for Arduino-ESP32 2.0 compatibility. The audio handler owns
+the API task while its client is connected, but ADC sampling, radar polling,
+notifications, and serial diagnostics continue in their own execution paths.
+All handlers reuse module accessors rather than owning sensor state.
 
 ## Extension points
 

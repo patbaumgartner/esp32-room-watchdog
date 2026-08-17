@@ -15,7 +15,14 @@
 void setup()
 {
   Serial.begin(115200);
-  micBegin();
+  if (!micBegin())
+  {
+    Serial.println("Fatal: microphone initialization failed");
+    while (true)
+    {
+      delay(1000);
+    }
+  }
   radarBegin();
   calibrationButtonBegin();
 
@@ -33,7 +40,6 @@ void loop()
   radarPoll();
 
   calibrationButtonPoll();
-  apiPoll();
   notifyPresenceChanges(presentNow);
   notifyMovement();
   notifyLoudSounds(mic);
