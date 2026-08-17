@@ -204,6 +204,11 @@ The ESP32 stores no recording. `GET /status` exposes `audioStreaming` and
 the receiving computer or WiFi could not drain the 170ms buffer in time.
 Only one recording client is supported.
 
+Stopping a recording with Ctrl+C leaves the device writing into a socket that
+is already gone, and it only finds out when a write gives up about ten seconds
+later. Starting a second recording inside that window returns `409` with a hint
+saying so — wait a moment and retry.
+
 ## Development
 
 ```bash
