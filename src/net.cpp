@@ -103,6 +103,7 @@ bool pushGotify(const String &message)
     if (gotifyUsesTls())
     {
         secureClient.setCACert(ISRG_ROOT_X1_PEM);
+        secureClient.setTimeout(GOTIFY_TIMEOUT_MS / 1000); // this overload takes seconds
         began = http.begin(secureClient, url);
     }
     else
@@ -116,6 +117,10 @@ bool pushGotify(const String &message)
         return false;
     }
 
+    // The push runs on the sensor loop; an unreachable server must not stall it
+    // for longer than this.
+    http.setConnectTimeout(GOTIFY_TIMEOUT_MS);
+    http.setTimeout(GOTIFY_TIMEOUT_MS);
     http.addHeader("X-Gotify-Key", GOTIFY_TOKEN);
     http.addHeader("Content-Type", "application/json");
     const String body = "{\"title\":\"ESP32 Room Watchdog\",\"message\":\"" +

@@ -34,6 +34,9 @@ constexpr uint32_t NTP_SYNC_TIMEOUT_MS = 10000; // needed for TLS cert validatio
 // without this a failing push is retried every ~50ms loop pass).
 constexpr uint32_t GOTIFY_RETRY_BACKOFF_MS = 30000;
 
+// Upper bound on how long one push may block the sensor loop.
+constexpr uint16_t GOTIFY_TIMEOUT_MS = 5000;
+
 // Sound detection: peak-to-peak ADC swing within one sample window.
 constexpr uint32_t SOUND_SAMPLE_WINDOW_MS = 50;
 constexpr int SOUND_PP_THRESHOLD = 1600; // ADC counts, tune to taste. Initial it was 800, but I changed it to 1600 to reduce false positives.
