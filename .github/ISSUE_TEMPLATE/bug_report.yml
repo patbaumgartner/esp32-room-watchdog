@@ -1,0 +1,64 @@
+name: Bug report
+description: Something on the device or in the build does not work
+labels: ["bug", "needs triage"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected versus what actually happened.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      placeholder: |
+        1. Flash commit abc1234
+        2. Walk into the room
+        3. No notification arrives
+    validations:
+      required: true
+
+  - type: textarea
+    id: serial
+    attributes:
+      label: Serial output
+      description: >
+        `pio device monitor` at 115200 baud, from boot through the failure.
+        Redact your SSID and IP if you would rather not share them — never
+        paste API_TOKEN or the Gotify token.
+      render: text
+
+  - type: input
+    id: commit
+    attributes:
+      label: Commit or version flashed
+      placeholder: 5a91694, or "main as of 2026-08-01"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: host
+    attributes:
+      label: Host OS used to build and flash
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - WSL2
+    validations:
+      required: true
+
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware
+      description: >
+        Board and sensor variants, and any deviation from
+        https://github.com/patbaumgartner/esp32-room-watchdog/blob/main/docs/hardware.md
+        — different pins, power source, cable lengths.
+      placeholder: ESP32-C3 SuperMini, HLK-LD2412, MAX9814, wired per docs
+    validations:
+      required: true

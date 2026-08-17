@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Wiring and flashing help
+    url: https://github.com/patbaumgartner/esp32-room-watchdog/blob/main/docs/flashing.md
+    about: Upload failures, port not found, and serial monitor problems are covered here first.
+  - name: Security vulnerability
+    url: https://github.com/patbaumgartner/esp32-room-watchdog/security/advisories/new
+    about: Report privately instead of opening a public issue.
