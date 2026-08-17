@@ -2,11 +2,18 @@
 
 #include <WebServer.h>
 
+#include <string.h>
+
 #include "audio_stream.h"
 #include "mic.h"
 #include "notifications.h"
 #include "radar.h"
 #include "secrets.h"
+
+// An empty or guessable token would leave the LAN API wide open, and the
+// constant-time comparison below would happily match an empty header.
+static_assert(sizeof(API_TOKEN) - 1 >= 16,
+              "API_TOKEN in secrets.h must be at least 16 characters");
 
 namespace
 {
@@ -21,6 +28,20 @@ namespace
         }
     }
 
+    // Compares over the full expected length so the time taken does not reveal
+    // how many leading bytes of a guess were correct.
+    bool tokenMatches(const String &supplied)
+    {
+        const size_t expectedLength = strlen(API_TOKEN);
+        uint8_t difference = supplied.length() == expectedLength ? 0 : 1;
+        for (size_t i = 0; i < expectedLength; ++i)
+        {
+            const char candidate = i < supplied.length() ? supplied[i] : '\0';
+            difference |= static_cast<uint8_t>(candidate ^ API_TOKEN[i]);
+        }
+        return difference == 0;
+    }
+
     bool authorized()
     {
         String supplied = server.header("Authorization");
@@ -32,24 +53,30 @@ namespace
         {
             supplied = server.header("X-Api-Key");
         }
-        if (supplied.isEmpty() && server.hasArg("plain"))
+        return tokenMatches(supplied);
+    }
+
+    // True when the request carried a valid token; sends the 401 otherwise.
+    bool rejectUnauthorized()
+    {
+        if (authorized())
         {
-            supplied = server.arg("plain");
+            return false;
         }
-        const bool matches = supplied == API_TOKEN;
-        if (!matches)
-        {
-            Serial.printf("api: auth rejected (header=%d, received=%u, expected=%u)\n",
-                          server.hasHeader("Authorization") || server.hasHeader("X-Api-Key") ||
-                              server.hasArg("plain"),
-                          supplied.length(),
-                          strlen(API_TOKEN));
-        }
-        return matches;
+        Serial.printf("api: %s %s rejected, no valid API token\n",
+                      server.method() == HTTP_GET ? "GET" : "POST",
+                      server.uri().c_str());
+        server.sendHeader("WWW-Authenticate", "Bearer");
+        server.send(401, "application/json", "{\"error\":\"missing or wrong API token\"}");
+        return true;
     }
 
     void handleStatus()
     {
+        if (rejectUnauthorized())
+        {
+            return;
+        }
         const Ld2412Parser::Report &radar = radarReport();
         const LevelWindow mic = micLastWindow();
         String json = "{";
@@ -71,9 +98,8 @@ namespace
 
     void handleCalibrate()
     {
-        if (!authorized())
+        if (rejectUnauthorized())
         {
-            server.send(401, "application/json", "{\"error\":\"missing or wrong API token\"}");
             return;
         }
         startCalibration();
@@ -82,9 +108,8 @@ namespace
 
     void handleAudio()
     {
-        if (!authorized())
+        if (rejectUnauthorized())
         {
-            server.send(401, "application/json", "{\"error\":\"missing or wrong API token\"}");
             return;
         }
         streamAudioPcm(server.client());
@@ -93,13 +118,13 @@ namespace
 
 void apiBegin()
 {
-    // WebServer only exposes headers listed here.
+    // WebServer only exposes headers listed here (it always adds Authorization).
     static const char *headerKeys[] = {"X-Api-Key"};
     server.collectHeaders(headerKeys, 1);
 
     server.on("/status", HTTP_GET, handleStatus);
     server.on("/calibrate", HTTP_POST, handleCalibrate);
-    server.on("/audio.pcm", HTTP_POST, handleAudio);
+    server.on("/audio.pcm", HTTP_GET, handleAudio);
     server.onNotFound([]
                       { server.send(404, "application/json", "{\"error\":\"not found\"}"); });
     server.begin();
