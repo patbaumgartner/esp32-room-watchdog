@@ -239,14 +239,17 @@ with the send/sequence logic in `radar.cpp`:
   and the per-gate motion/static sensitivity arrays from `config.h` on every
   boot (the module persists them in flash anyway; rewriting keeps the source
   of truth in git).
-- **Background calibration** — `startCalibration()` (notifications module)
-  triggers the module's background correction: starts 10s after the command,
-  takes ~2 minutes, and must run with the room empty. Reachable from the
-  BOOT button (hold ~1s) and `POST /calibrate`; both share the same entry
-  point, which also pushes a "leave the room" warning via Gotify.
+- **Background calibration** — `requestCalibration()` (notifications module)
+  raises a flag that `pollCalibrationRequest()` acts on from the sensor loop.
+  It triggers the module's background correction: starts 10s after the
+  command, takes ~2 minutes, and must run with the room empty. Reachable from
+  the BOOT button (hold ~1s), `POST /calibrate`, and the socket's `calibrate`
+  command; all three share the one entry point, which also alerts "leave the
+  room".
 
   Every command goes through `sendFrame()`, which flushes the UART and waits
   100ms — the module needs that gap to acknowledge before the next frame.
+  That is ~300ms per calibration, which is why it never runs in a callback.
 
 ## HTTP API
 
