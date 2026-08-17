@@ -45,10 +45,14 @@ green pipeline.
 
 ## Design rules
 
-- **Decision logic goes in [lib/detectors](lib/detectors)** — header-only,
-  pure C++, no `Arduino.h`, no hardware calls. Time is passed in as a
-  parameter (`nowMs`), never read via `millis()` inside the class.
-- **Hardware and network I/O stays in src/** — thin glue only.
+- **Decision logic goes in [lib/](lib)** — header-only, pure C++, no
+  `Arduino.h`, no hardware calls, no heap. Time is passed in as a parameter
+  (`nowMs`), never read via `millis()` inside the class. This covers detection
+  (`lib/detectors`), delivery policy (`lib/telemetry`, `lib/notify`),
+  authentication (`lib/auth`), and protocol handling (`lib/ld2412`,
+  `lib/audio`).
+- **Hardware and network I/O stays in src/** — thin glue only. Anything called
+  from an AsyncTCP callback must not block; defer it to the sensor loop.
 - **Every class in lib/ gets a test** in [test/](test/) (Unity, runs natively).
 - **Tuning constants live in [src/config.h](src/config.h)**, credentials in
   the gitignored `src/secrets.h`. Never commit real credentials.
@@ -67,7 +71,8 @@ green pipeline.
 Please include:
 
 - What you expected vs. what happened
-- Serial monitor output (`pio device monitor`, 115200 baud) if relevant
+- Serial monitor output (`pio device monitor -e esp32-c3-supermini`, 115200
+  baud) if relevant
 - Your hardware variant (board, sensor modules) and wiring deviations, if any
 
 Never paste `API_TOKEN`, your Gotify token, or your WiFi password into an

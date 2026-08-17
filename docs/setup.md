@@ -132,6 +132,8 @@ From [`platformio.ini`](../platformio.ini):
 | `platform` | pioarduino `55.03.311` | Pinned Arduino-ESP32 3.3.11 / ESP-IDF 5.5.5 platform for reproducible builds |
 | `board` | `lolin_c3_mini` | Closest match for the ESP32-C3 SuperMini |
 | `framework` | `arduino` | Arduino libraries, not the Arduino IDE |
+| `board_build.partitions` | `huge_app.csv` | ~3MB app slot, no OTA — the async web server does not fit the default 1.3MB layout |
+| `lib_deps` | `AsyncTCP` 3.5.0, `ESPAsyncWebServer` 3.12.0 | Pinned exactly; bumped by hand since PlatformIO has no Dependabot ecosystem |
 | `monitor_speed` | `115200` | Must match `Serial.begin()` in `main.cpp` |
 | `upload_speed` | `921600` | Drop to `115200` if uploads are flaky |
 | `ARDUINO_USB_MODE=1`, `ARDUINO_USB_CDC_ON_BOOT=1` | | Routes `Serial` over the chip's native USB, so no extra USB-serial adapter is needed |

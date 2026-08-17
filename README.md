@@ -206,12 +206,16 @@ Only one recording client is supported.
 ## Development
 
 ```bash
-./check.sh                       # unit tests + cppcheck + firmware build
-pio test -e native               # unit tests only
-pio check -e esp32-c3-supermini  # static analysis only
-pio run -e esp32-c3-supermini    # build only
-pio device monitor               # serial log @ 115200 baud
+./check.sh                                # unit tests + cppcheck + firmware build
+pio test -e native                        # unit tests only
+pio run -e esp32-c3-supermini             # build only
+pio device monitor -e esp32-c3-supermini  # serial log @ 115200 baud
 ```
+
+`pio check` is deliberately not used: pioarduino's bundled Linux analyzer
+needs the obsolete `libpcre3` runtime and fails. `check.sh` and `check.ps1`
+run a pinned, cross-platform cppcheck package against PlatformIO's compilation
+database instead, which is also what CI runs.
 
 Windows equivalents: `./check.ps1` and `./deploy.ps1` (check + flash). The two
 PlatformIO environments target incompatible platforms, so always pass `-e`.
