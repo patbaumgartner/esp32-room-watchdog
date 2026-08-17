@@ -67,6 +67,7 @@ void pollCalibrationRequest()
     alert("calibration",
           "Radar calibration starts in 10s - leave the room! (takes ~2 min)");
 }
+
 void notifyPresenceChanges(bool presentNow)
 {
     const PresenceMonitor::Event event = presenceMonitor.onSample(presentNow, millis());

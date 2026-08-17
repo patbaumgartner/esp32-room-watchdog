@@ -1,5 +1,7 @@
 #include "ws.h"
 
+#include <atomic>
+
 #include <TelemetryGate.h>
 
 #include "config.h"
@@ -11,11 +13,16 @@
 namespace
 {
     AsyncWebSocket socket("/ws");
+
+    // Only ever touched from the sensor loop.
     TelemetryGate gate(WS_MIN_PUSH_INTERVAL_MS, WS_HEARTBEAT_MS);
 
-    // Zero means nobody is connected. Only ever written from AsyncTCP
-    // callbacks, only ever read as a hint — ws.client() is the real check.
-    uint32_t activeClientId = 0;
+    // Zero means nobody is connected. Written from AsyncTCP callbacks and read
+    // from the sensor loop, so it has to be atomic. Every use of it goes
+    // through the socket's id-based API, which holds the library's client lock
+    // for the whole lookup-and-send — a raw AsyncWebSocketClient* would dangle
+    // if the client disconnected between the lookup and the send.
+    std::atomic<uint32_t> activeClientId{0};
 
     // Change detection operates on the raw values rather than the rendered
     // JSON, so uptime alone never counts as a change. Packed because padding
@@ -75,11 +82,6 @@ namespace
         return out;
     }
 
-    AsyncWebSocketClient *listener()
-    {
-        return activeClientId == 0 ? nullptr : socket.client(activeClientId);
-    }
-
     void sendHello(AsyncWebSocketClient *client)
     {
         String json = "{\"type\":\"hello\"";
@@ -127,15 +129,13 @@ namespace
         case WS_EVT_CONNECT:
         {
             client->setCloseClientOnQueueFull(false);
-            AsyncWebSocketClient *previous = listener();
-            if (previous != nullptr && previous->id() != client->id())
+            const uint32_t previous = activeClientId.exchange(client->id());
+            if (previous != 0 && previous != client->id())
             {
                 // A killed app leaves a socket that TCP only reaps minutes
                 // later; the live client wins so the node cannot lock us out.
-                previous->close(1001, "replaced by a newer client");
+                socket.close(previous, 1001, "replaced by a newer client");
             }
-            activeClientId = client->id();
-            gate.reset();
             Serial.printf("ws: client %s connected\n",
                           client->remoteIP().toString().c_str());
             sendHello(client);
@@ -143,12 +143,14 @@ namespace
         }
         case WS_EVT_DISCONNECT:
         case WS_EVT_ERROR:
-            if (client->id() == activeClientId)
+        {
+            uint32_t expected = client->id();
+            if (activeClientId.compare_exchange_strong(expected, 0))
             {
-                activeClientId = 0;
                 Serial.println("ws: client disconnected");
             }
             break;
+        }
         case WS_EVT_DATA:
             handleCommand(client, arg, data, len);
             break;
@@ -168,31 +170,39 @@ void wsAttach(AsyncWebServer &server, AsyncMiddleware &authentication)
 void wsPublishTelemetry(bool presenceNow, const LevelWindow &mic)
 {
     socket.cleanupClients(1);
-    AsyncWebSocketClient *client = listener();
-    if (client == nullptr)
+    const uint32_t id = activeClientId.load();
+    if (id == 0)
     {
         return;
+    }
+
+    // Serving a different client than last pass: start it with a full frame
+    // instead of making it wait for the room to change. Both variables are
+    // loop-task local, so the gate is never touched from a network callback.
+    static uint32_t servedClientId = 0;
+    if (id != servedClientId)
+    {
+        gate.reset();
+        servedClientId = id;
     }
 
     const Snapshot snapshot = takeSnapshot(presenceNow, mic);
     const uint32_t fingerprint = telemetryFingerprint(&snapshot, sizeof(snapshot));
     const uint32_t now = millis();
-    if (!gate.shouldSend(fingerprint, now))
-    {
-        return;
-    }
-    if (client->queueIsFull())
+    if (!gate.shouldSend(fingerprint, now) || !socket.availableForWrite(id))
     {
         return; // telemetry is disposable; the gate retries next pass
     }
-    client->text(telemetryJson(snapshot, mic, now));
-    gate.sent(fingerprint, now);
+    if (socket.text(id, telemetryJson(snapshot, mic, now)))
+    {
+        gate.sent(fingerprint, now);
+    }
 }
 
 void wsPublishEvent(const char *type, const String &message)
 {
-    AsyncWebSocketClient *client = listener();
-    if (client == nullptr || client->queueIsFull())
+    const uint32_t id = activeClientId.load();
+    if (id == 0 || !socket.availableForWrite(id))
     {
         return;
     }
@@ -201,10 +211,10 @@ void wsPublishEvent(const char *type, const String &message)
     json += "\",\"message\":\"" + jsonEscape(message) + "\"";
     json += ",\"uptimeMs\":" + String(millis());
     json += "}";
-    client->text(json);
+    socket.text(id, json);
 }
 
 bool wsClientConnected()
 {
-    return listener() != nullptr;
+    return activeClientId.load() != 0;
 }

@@ -109,10 +109,10 @@ One pass takes ~50ms because it waits for the next mic window. Nothing in the
 loop blocks on the network: pushes are queued for a worker task, and telemetry
 frames are dropped rather than buffered when the socket is backed up.
 
-## Why the JSON is built in the loop
+## Crossing the task boundary
 
 AsyncTCP runs handler callbacks on its own task, and blocking that task stalls
-every connection on port 80. Two rules follow.
+every connection on port 80. Three rules follow.
 
 **Handlers never block.** `POST /calibrate` and the socket's `calibrate`
 command only set a flag; `pollCalibrationRequest()` runs the actual command on
@@ -126,6 +126,15 @@ there is one way to start a calibration rather than two.
 state across three tasks. Instead `wsPublishTelemetry()` runs on the sensor
 loop, snapshots the values there, renders the JSON, and hands a finished
 string to the socket.
+
+**The loop never holds a client handle.** `AsyncWebSocket::client()` returns a
+raw pointer after releasing the library's client lock, and `_handleDisconnect()`
+erases that client from the AsyncTCP task — so a pointer held across a send can
+dangle. The loop keeps only an atomic client id and goes through the id-based
+API (`text(id, …)`, `availableForWrite(id)`, `close(id, …)`), which holds the
+lock for the whole lookup-and-send. `TelemetryGate` stays loop-task-local for
+the same reason: a reconnect is detected by comparing ids in the loop rather
+than by resetting the gate from the callback.
 
 ## Ports
 
