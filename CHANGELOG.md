@@ -28,6 +28,8 @@ releases yet — flash `main`. Format follows
 ### Added
 
 - `check.sh` and `record.sh` for Linux and macOS.
+- `lib/auth/ApiToken.h` — the token comparison moved out of `api.cpp` so it is
+  covered by native tests like the rest of the decision logic.
 - `pio check` (cppcheck) in the local quality gate and in CI.
 - `SECURITY.md` with the threat model, `CODE_OF_CONDUCT.md`, issue and pull
   request templates.
@@ -38,6 +40,10 @@ releases yet — flash `main`. Format follows
 
 - API tokens are compared over their full length instead of stopping at the
   first differing byte, and a rejection no longer logs the expected length.
+- `409 Conflict` from `GET /audio.pcm` is now JSON like every other error.
 - A Gotify push now has explicit connect and read timeouts, so an unreachable
   server cannot stall presence and sound detection.
 - `-Wall -Wextra` are on for both environments.
+- Documented commands that never worked: `pio run` and `pio run -t upload` fail
+  without `-e esp32-c3-supermini`, `docs/flashing.md` linked to a nonexistent
+  anchor, and `docs/hardware.md` linked to four gitignored vendor archives.

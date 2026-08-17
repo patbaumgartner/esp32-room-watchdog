@@ -2,7 +2,7 @@
 
 #include <WebServer.h>
 
-#include <string.h>
+#include <ApiToken.h>
 
 #include "audio_stream.h"
 #include "mic.h"
@@ -10,8 +10,7 @@
 #include "radar.h"
 #include "secrets.h"
 
-// An empty or guessable token would leave the LAN API wide open, and the
-// constant-time comparison below would happily match an empty header.
+// An empty or guessable token would leave the LAN API wide open.
 static_assert(sizeof(API_TOKEN) - 1 >= 16,
               "API_TOKEN in secrets.h must be at least 16 characters");
 
@@ -28,32 +27,20 @@ namespace
         }
     }
 
-    // Compares over the full expected length so the time taken does not reveal
-    // how many leading bytes of a guess were correct.
-    bool tokenMatches(const String &supplied)
-    {
-        const size_t expectedLength = strlen(API_TOKEN);
-        uint8_t difference = supplied.length() == expectedLength ? 0 : 1;
-        for (size_t i = 0; i < expectedLength; ++i)
-        {
-            const char candidate = i < supplied.length() ? supplied[i] : '\0';
-            difference |= static_cast<uint8_t>(candidate ^ API_TOKEN[i]);
-        }
-        return difference == 0;
-    }
-
     bool authorized()
     {
         String supplied = server.header("Authorization");
-        if (supplied.startsWith("Bearer "))
+        const size_t prefix = ApiToken::bearerPrefixLength(supplied.c_str());
+        if (prefix > 0)
         {
-            supplied.remove(0, 7);
+            supplied.remove(0, prefix);
         }
         else
         {
             supplied = server.header("X-Api-Key");
         }
-        return tokenMatches(supplied);
+        return ApiToken::matches(supplied.c_str(), supplied.length(),
+                                 API_TOKEN, sizeof(API_TOKEN) - 1);
     }
 
     // True when the request carried a valid token; sends the 401 otherwise.

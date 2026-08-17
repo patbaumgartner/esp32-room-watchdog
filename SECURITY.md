@@ -28,7 +28,10 @@ The firmware is designed for a trusted home LAN and deliberately assumes it:
   internet, and do not port-forward it.
 - **There is no rate limiting.** A device on your LAN can guess tokens as fast
   as the ESP32 answers. Use a long random `API_TOKEN`; the build refuses
-  anything shorter than 16 characters.
+  anything shorter than 16 characters. Request parsing also happens before
+  authentication, so an unauthenticated client on the LAN can keep the API task
+  busy or exhaust its heap. That is a denial of service on a sensor, not a
+  disclosure, and it is accepted.
 - **The device streams live audio and occupancy on request.** Treat `API_TOKEN`
   as being as sensitive as a microphone in your home, because that is what it
   unlocks.

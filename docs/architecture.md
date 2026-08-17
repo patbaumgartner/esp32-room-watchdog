@@ -35,6 +35,7 @@ flowchart LR
     subgraph lib [lib/ — pure logic, unit-tested]
         LW[LevelWindow<br/>min/max per window]
         PCM[PcmEncoder<br/>DC removal + signed PCM]
+        AT[ApiToken<br/>constant-time token compare]
         SD[SoundDetector<br/>threshold + cooldown]
         PM[PresenceMonitor<br/>debounce + edges]
         DT[DistanceTracker<br/>movement deltas]
@@ -51,6 +52,7 @@ flowchart LR
     LOOP --> RADG
     LOOP --> NOTIF
     LOOP --> API
+    API --> AT
     LOOP --> CBTN
     LOOP --> SLOG
     API --> NOTIF
@@ -151,13 +153,14 @@ with the send/sequence logic in `radar.cpp`:
 
 `api.cpp` runs a `WebServer` task on port 80. All three endpoints —
 `GET /status`, `POST /calibrate` and `GET /audio.pcm` — require `API_TOKEN`
-from secrets.h, supplied as `Authorization: Bearer` or `X-Api-Key`. The token
-is compared over its full length so a rejection time does not reveal how many
-leading bytes were right, and a token shorter than 16 characters fails the
-build. The audio handler owns the API task while its client is connected, but
-ADC sampling, radar polling, notifications, and serial diagnostics continue in
-their own execution paths. All handlers reuse module accessors rather than
-owning sensor state.
+from secrets.h, supplied as `Authorization: Bearer` or `X-Api-Key`. The
+comparison itself lives in `lib/auth/ApiToken.h` so it can be tested natively:
+it touches every byte of the expected token, so a rejection time does not
+reveal how many leading bytes were right. A token shorter than 16 characters
+fails the build. The audio handler owns the API task while its client is
+connected, but ADC sampling, radar polling, notifications, and serial
+diagnostics continue in their own execution paths. All handlers reuse module
+accessors rather than owning sensor state.
 
 The transport is plain HTTP, so the token and the audio both cross the LAN in
 the clear. [SECURITY.md](../SECURITY.md) states what that does and does not

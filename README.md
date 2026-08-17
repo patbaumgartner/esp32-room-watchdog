@@ -166,6 +166,7 @@ notification semantics: [docs/architecture.md](docs/architecture.md)
 esp32-room-watchdog/
 ├── lib/
 │   ├── audio/                # ADC bias removal + PCM conversion (unit-tested)
+│   ├── auth/                 # API token comparison (unit-tested)
 │   ├── detectors/            # pure logic, no Arduino deps (unit-tested)
 │   │   ├── LevelWindow.h     #   min/max accumulator for mic sampling windows
 │   │   ├── SoundDetector.h   #   threshold + cooldown decisions

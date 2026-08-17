@@ -9,10 +9,10 @@ namespace
 {
     constexpr size_t NETWORK_CHUNK_SAMPLES = 1024;
 
-    void sendTextResponse(WiFiClient &client, const char *status, const char *body)
+    void sendJsonResponse(WiFiClient &client, const char *status, const char *body)
     {
         client.printf("HTTP/1.0 %s\r\n", status);
-        client.println("Content-Type: text/plain; charset=utf-8");
+        client.println("Content-Type: application/json");
         client.println("Cache-Control: no-store");
         client.println("Connection: close");
         client.printf("Content-Length: %u\r\n\r\n", strlen(body));
@@ -24,7 +24,8 @@ void streamAudioPcm(WiFiClient client)
 {
     if (!micStartPcmStream())
     {
-        sendTextResponse(client, "409 Conflict", "an audio stream is already active\n");
+        sendJsonResponse(client, "409 Conflict",
+                         "{\"error\":\"an audio stream is already active\"}");
         return;
     }
 
