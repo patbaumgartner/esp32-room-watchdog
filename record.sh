@@ -5,12 +5,17 @@
 #   export WATCHDOG_API_TOKEN='<API_TOKEN>'   # or let the script prompt
 #   ./record.sh [host[:port]] [room.wav]
 #
-# host defaults to the node's mDNS name. Pass host:port, or a full URL base,
-# when going through a reverse proxy.
+# host defaults to the node's mDNS name and port to 81, where the PCM stream
+# lives. Pass a full host:port when going through a reverse proxy.
 set -euo pipefail
 
-device=${1:-watchdog.local}
+device=${1:-watchdog.local:81}
 output=${2:-room-watchdog-$(date +%Y%m%d-%H%M%S).wav}
+
+case "$device" in
+*:*) ;;
+*) device="${device}:81" ;;
+esac
 
 if ! command -v ffmpeg >/dev/null 2>&1; then
     echo "ffmpeg is required and was not found on PATH." >&2

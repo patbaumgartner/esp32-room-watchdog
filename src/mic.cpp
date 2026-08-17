@@ -27,6 +27,7 @@ namespace
 
     LevelWindow lastWindow;
     QueueHandle_t windowQueue = nullptr;
+    SemaphoreHandle_t pcmAvailable = nullptr;
     portMUX_TYPE stateMux = portMUX_INITIALIZER_UNLOCKED;
     adc_continuous_handle_t adcHandle = nullptr;
     adc_channel_t micAdcChannel = ADC_CHANNEL_0;
@@ -51,6 +52,7 @@ namespace
 
     void appendPcm(const int16_t *samples, size_t sampleCount)
     {
+        bool added = false;
         portENTER_CRITICAL(&stateMux);
         if (pcmStreaming)
         {
@@ -64,8 +66,15 @@ namespace
             pcmWriteIndex = (pcmWriteIndex + accepted) % AUDIO_STREAM_BUFFER_SAMPLES;
             pcmCount += accepted;
             droppedSamples += sampleCount - accepted;
+            added = accepted > 0;
         }
         portEXIT_CRITICAL(&stateMux);
+
+        if (added)
+        {
+            // cppcheck-suppress cstyleCast
+            xSemaphoreGive(pcmAvailable);
+        }
     }
 
     void micAdcTask(void *)
@@ -175,7 +184,8 @@ namespace
 bool micBegin()
 {
     windowQueue = xQueueCreate(1, sizeof(LevelWindow));
-    if (windowQueue == nullptr)
+    pcmAvailable = xSemaphoreCreateBinary();
+    if (windowQueue == nullptr || pcmAvailable == nullptr)
     {
         Serial.println("mic: buffer allocation failed");
         return false;
@@ -229,6 +239,7 @@ bool micStartPcmStream()
     droppedSamples = 0;
     pcmStreaming = true;
     portEXIT_CRITICAL(&stateMux);
+    xSemaphoreTake(pcmAvailable, 0);
     return true;
 }
 
@@ -238,33 +249,33 @@ void micStopPcmStream()
     pcmStreaming = false;
     pcmCount = 0;
     portEXIT_CRITICAL(&stateMux);
+    // cppcheck-suppress cstyleCast
+    xSemaphoreGive(pcmAvailable);
 }
 
-size_t micTryReadPcm(uint8_t *destination, size_t maxBytes)
+size_t micReadPcm(int16_t *samples, size_t maxSamples)
 {
-    if (destination == nullptr)
+    while (samples != nullptr && maxSamples > 0)
     {
-        return 0;
-    }
-    const size_t maxSamples = maxBytes / sizeof(int16_t);
-    if (maxSamples == 0)
-    {
-        return 0;
-    }
+        portENTER_CRITICAL(&stateMux);
+        const size_t available = pcmCount < maxSamples ? pcmCount : maxSamples;
+        const size_t firstPart = available < AUDIO_STREAM_BUFFER_SAMPLES - pcmReadIndex
+                                     ? available
+                                     : AUDIO_STREAM_BUFFER_SAMPLES - pcmReadIndex;
+        memcpy(samples, &pcmRing[pcmReadIndex], firstPart * sizeof(int16_t));
+        memcpy(samples + firstPart, pcmRing, (available - firstPart) * sizeof(int16_t));
+        pcmReadIndex = (pcmReadIndex + available) % AUDIO_STREAM_BUFFER_SAMPLES;
+        pcmCount -= available;
+        const bool active = pcmStreaming;
+        portEXIT_CRITICAL(&stateMux);
 
-    portENTER_CRITICAL(&stateMux);
-    const size_t available = pcmCount < maxSamples ? pcmCount : maxSamples;
-    const size_t firstPart = available < AUDIO_STREAM_BUFFER_SAMPLES - pcmReadIndex
-                                 ? available
-                                 : AUDIO_STREAM_BUFFER_SAMPLES - pcmReadIndex;
-    memcpy(destination, &pcmRing[pcmReadIndex], firstPart * sizeof(int16_t));
-    memcpy(destination + firstPart * sizeof(int16_t), pcmRing,
-           (available - firstPart) * sizeof(int16_t));
-    pcmReadIndex = (pcmReadIndex + available) % AUDIO_STREAM_BUFFER_SAMPLES;
-    pcmCount -= available;
-    portEXIT_CRITICAL(&stateMux);
-
-    return available * sizeof(int16_t);
+        if (available > 0 || !active)
+        {
+            return available;
+        }
+        xSemaphoreTake(pcmAvailable, pdMS_TO_TICKS(1000));
+    }
+    return 0;
 }
 
 bool micPcmStreaming()

@@ -23,23 +23,28 @@ patient with the fix timeline.
 The firmware is designed for a trusted home LAN and deliberately assumes it:
 
 - **The API is plain HTTP and plain WebSocket.** Every endpoint on port 80
-  (`/status`, `/calibrate`, `/ws`, `/audio.pcm`) requires `API_TOKEN`, but the
-  token, the telemetry and the audio stream all travel unencrypted. Anyone who
-  can passively observe your LAN can capture them. Do not expose the port to
-  the internet, and do not port-forward it.
+  (`/status`, `/calibrate`, `/ws`) and port 81 (`/audio.pcm`) requires
+  `API_TOKEN`, but the token, the telemetry and the audio stream all travel
+  unencrypted. Anyone who can passively observe your LAN can capture them. Do
+  not expose either port to the internet, and do not port-forward them.
 - **The device does not terminate TLS.** There is no `https://` or `wss://`
   listener on the ESP32 — the async server has no TLS support and the chip has
   no headroom for it. To reach the node from outside your LAN, put a reverse
   proxy in front of it and let the proxy terminate TLS:
 
   ```nginx
+  location /audio.pcm {
+      proxy_pass http://watchdog.local:81;
+      proxy_buffering off;              # it is a live stream
+      proxy_read_timeout 24h;
+  }
+
   location / {
-      proxy_pass http://watchdog.local;
+      proxy_pass http://watchdog.local:80;
       proxy_http_version 1.1;           # required for the WebSocket upgrade
       proxy_set_header Upgrade $http_upgrade;
       proxy_set_header Connection "upgrade";
-      proxy_buffering off;              # /audio.pcm is a live stream
-      proxy_read_timeout 24h;           # longer than any recording
+      proxy_read_timeout 1h;            # longer than WS_HEARTBEAT_MS
   }
   ```
 

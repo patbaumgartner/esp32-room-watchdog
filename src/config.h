@@ -33,9 +33,10 @@ constexpr uint32_t NTP_SYNC_TIMEOUT_MS = 10000; // needed for TLS cert validatio
 // The node answers to <MDNS_HOSTNAME>.local so clients need no fixed IP.
 constexpr char MDNS_HOSTNAME[] = "watchdog";
 
-// One async server carries the REST API, the telemetry socket and the PCM
-// stream.
+// Ports. The REST + WebSocket API is async; the PCM stream keeps its own
+// synchronous server because it owns its socket for the whole recording.
 constexpr uint16_t API_PORT = 80;
+constexpr uint16_t AUDIO_PORT = 81;
 
 // Log the X-Forwarded-For client instead of the peer address. Only enable
 // behind a reverse proxy you control — anyone can forge the header otherwise.
@@ -73,13 +74,7 @@ constexpr uint32_t SOUND_NOTIFY_COOLDOWN_MS = 15000;
 // Lossless mono PCM stream. The ESP32-C3 ADC produces 12 useful bits; samples
 // use a 16-bit container so standard recording tools can consume them.
 constexpr uint32_t AUDIO_SAMPLE_RATE_HZ = 48000;
-
-// The stream is drained by an AsyncTCP callback rather than a task that can
-// block, so a refill is normally driven by the next TCP ack (~ms). If the
-// connection ever goes fully idle, lwIP's poll timer is the fallback and fires
-// only every 500ms, so size the buffer to ride out one of those without
-// dropping a sample.
-constexpr size_t AUDIO_STREAM_BUFFER_SAMPLES = 32768; // ~680ms
+constexpr size_t AUDIO_STREAM_BUFFER_SAMPLES = 8192; // ~170ms of backpressure
 
 // Presence: LD2412 OUT must hold a new state this long before we notify.
 constexpr uint32_t PRESENCE_DEBOUNCE_MS = 2000;

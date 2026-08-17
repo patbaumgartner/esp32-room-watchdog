@@ -17,11 +17,6 @@ LevelWindow micLastWindow();
 // Controls the single-consumer PCM ring buffer used by the network streamer.
 bool micStartPcmStream();
 void micStopPcmStream();
+size_t micReadPcm(int16_t *samples, size_t maxSamples);
 bool micPcmStreaming();
 uint32_t micDroppedSamples();
-
-// Copies whatever is buffered and returns immediately, so the caller can be an
-// async callback that must never wait. Returns bytes written, 0 when empty.
-// Byte-oriented because the destination is a network buffer at an arbitrary
-// offset, which int16_t may not be aligned to.
-size_t micTryReadPcm(uint8_t *destination, size_t maxBytes);
