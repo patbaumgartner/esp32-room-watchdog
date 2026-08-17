@@ -56,7 +56,9 @@ namespace
 
     String telemetryJson(const Snapshot &snapshot, const LevelWindow &mic, uint32_t nowMs)
     {
-        String json = "{\"type\":\"telemetry\"";
+        String json;
+        json.reserve(320); // one allocation per frame instead of a dozen
+        json = "{\"type\":\"telemetry\"";
         json += ",\"presence\":" + String(snapshot.presence ? "true" : "false");
         json += ",\"targetState\":" + String(snapshot.targetState);
         json += ",\"movingDistanceCm\":" + String(snapshot.movingDistanceCm);
@@ -103,6 +105,13 @@ namespace
             info->opcode != WS_TEXT)
         {
             return; // commands are single short text frames; ignore anything else
+        }
+        if (len > WS_COMMAND_MAX)
+        {
+            // Refuse before allocating: the longest command is 9 bytes, and a
+            // client should not be able to size a heap buffer on this device.
+            client->text("{\"type\":\"error\",\"message\":\"command too long\"}");
+            return;
         }
 
         String command;

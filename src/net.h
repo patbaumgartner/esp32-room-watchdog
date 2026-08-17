@@ -23,4 +23,4 @@ bool pushBackingOff();
 
 // Messages that never reached the server: discarded from a full queue, or
 // given up on after GOTIFY_MAX_ATTEMPTS.
-uint32_t gotifyLostCount();
+uint32_t pushLostCount();

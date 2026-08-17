@@ -48,6 +48,10 @@ constexpr bool TRUST_PROXY_HEADERS = false;
 constexpr uint32_t WS_MIN_PUSH_INTERVAL_MS = 100;
 constexpr uint32_t WS_HEARTBEAT_MS = 2000;
 
+// Longest client command accepted on the socket. Anything larger is refused
+// before it is copied, so a client cannot size a heap buffer on the device.
+constexpr size_t WS_COMMAND_MAX = 32;
+
 // Backoff after a failed push (the worker retries the same message, so
 // without this a dead server would be hammered every loop pass).
 constexpr uint32_t GOTIFY_RETRY_BACKOFF_MS = 30000;

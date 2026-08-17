@@ -67,7 +67,9 @@ namespace
     {
         const Ld2412Parser::Report radar = radarReport();
         const LevelWindow mic = micLastWindow();
-        String json = "{";
+        String json;
+        json.reserve(384);
+        json = "{";
         json += "\"presence\":" + String(radarPresenceDetected() ? "true" : "false");
         json += ",\"targetState\":" + String(radar.targetState);
         json += ",\"movingDistanceCm\":" + String(radar.movingDistanceCm);
@@ -81,7 +83,7 @@ namespace
         json += ",\"audioDroppedSamples\":" + String(micDroppedSamples());
         json += ",\"telemetryClient\":" + String(wsClientConnected() ? "true" : "false");
         json += ",\"pushBackingOff\":" + String(pushBackingOff() ? "true" : "false");
-        json += ",\"pushLost\":" + String(gotifyLostCount());
+        json += ",\"pushLost\":" + String(pushLostCount());
         json += ",\"uptimeMs\":" + String(millis());
         json += "}";
         return json;

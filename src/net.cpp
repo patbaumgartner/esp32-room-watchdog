@@ -242,7 +242,7 @@ bool pushBackingOff()
     return hadFailure && millis() - lastFailureMs < GOTIFY_RETRY_BACKOFF_MS;
 }
 
-uint32_t gotifyLostCount()
+uint32_t pushLostCount()
 {
     uint32_t discarded = 0;
     if (queueLock != nullptr && xSemaphoreTake(queueLock, pdMS_TO_TICKS(100)) == pdTRUE)
