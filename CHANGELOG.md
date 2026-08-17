@@ -41,18 +41,18 @@ releases yet — flash `main`. Format follows
 
 ### Changed
 
-- **Breaking — `GET /audio.pcm` moved to port 81.** The REST API and WebSocket
-  are now served by `ESPAsyncWebServer` on port 80, but a recording holds its
-  socket for minutes, which an async handler must never do. It keeps the
-  synchronous server on its own port. `record.sh` and `record.ps1` follow
-  automatically; a reverse proxy needs a second route.
-- **Breaking — `record.ps1 -DeviceIp` is now `-Device`,** and both recorders
+- `GET /audio.pcm` is served by a synchronous `WebServer` on port 81 while the
+  REST API and WebSocket moved to `ESPAsyncWebServer` on port 80. A recording
+  holds its socket for minutes, which an async handler must never do.
+  `record.sh` and `record.ps1` follow automatically; a reverse proxy needs a
+  second route.
+- `record.ps1` takes `-Device` rather than `-DeviceIp`, and both recorders
   default to `watchdog.local:81` instead of requiring an IP.
-- **Breaking — movement updates no longer reach Gotify.** "Person moved to X"
-  is a live event on the WebSocket only. The socket streams position
-  continuously, so pushing the same thing to a phone was noise. Presence,
-  sound, boot and calibration alerts are unchanged.
-- **The firmware uses the `huge_app` partition layout.** The async stack pushed
+- Movement updates no longer reach Gotify. "Person moved to X" is a live event
+  on the WebSocket only. The socket streams position continuously, so pushing
+  the same thing to a phone was noise. Presence, sound, boot and calibration
+  alerts are unchanged.
+- The firmware uses the `huge_app` partition layout. The async stack pushed
   the default 1.3MB app partition to ~97% full; there is no OTA here, so the
   second app slot is traded for headroom (now ~40%). Reflashing rewrites the
   partition table.
@@ -70,18 +70,15 @@ releases yet — flash `main`. Format follows
   callback.
 - cppcheck suppresses findings from vendored sources under `.pio/libdeps`, the
   way it already did for the platform packages.
-- **Breaking — `GET /status` now requires the API token.** It used to return
-  live occupancy (presence, distance, mic level, uptime) to anything that could
-  reach port 80. Send `Authorization: Bearer <API_TOKEN>` or
-  `X-Api-Key: <API_TOKEN>`.
-- **Breaking — the audio stream moved from `POST /audio.pcm` to
-  `GET /audio.pcm`.** It is a read, and the POST body only existed to smuggle
-  the token past `ffmpeg`.
-- **Breaking — no endpoint accepts the token in the request body any more.**
-  Use one of the two headers above. `record.ps1` and `record.sh` already do.
-- **Breaking — `record.ps1` no longer takes `-ApiToken`.** Set
-  `WATCHDOG_API_TOKEN` or let the script prompt, so the token stays out of the
-  shell history.
+- `GET /status` requires the API token. It used to return live occupancy
+  (presence, distance, mic level, uptime) to anything that could reach port 80.
+  Send `Authorization: Bearer <API_TOKEN>` or `X-Api-Key: <API_TOKEN>`.
+- The audio stream is `GET /audio.pcm` rather than `POST`. It is a read, and
+  the POST body only existed to smuggle the token past `ffmpeg`.
+- No endpoint accepts the token in the request body. Use one of the two
+  headers above; `record.ps1` and `record.sh` already do.
+- `record.ps1` no longer takes `-ApiToken`. Set `WATCHDOG_API_TOKEN` or let the
+  script prompt, so the token stays out of the shell history.
 - The build fails if `API_TOKEN` is shorter than 16 characters.
 - The firmware now builds with the pinned pioarduino `55.03.311` platform
   (Arduino-ESP32 3.3.11 and ESP-IDF 5.5.5) instead of Arduino-ESP32 2.0.17.
