@@ -26,6 +26,6 @@ void calibrationButtonPoll()
     if (millis() - pressedSinceMs >= 1000)
     {
         pressedSinceMs = 0;
-        startCalibration();
+        requestCalibration();
     }
 }

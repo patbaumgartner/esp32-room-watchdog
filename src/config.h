@@ -30,12 +30,37 @@ constexpr uint8_t RADAR_STATIC_SENSITIVITY[14] = {
 constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 20000;
 constexpr uint32_t NTP_SYNC_TIMEOUT_MS = 10000; // needed for TLS cert validation
 
-// Backoff after a failed push (detectors repeat events until delivered, so
-// without this a failing push is retried every ~50ms loop pass).
+// The node answers to <MDNS_HOSTNAME>.local so clients need no fixed IP.
+constexpr char MDNS_HOSTNAME[] = "watchdog";
+
+// Ports. The REST + WebSocket API is async; the PCM stream keeps its own
+// synchronous server because it owns its socket for the whole recording.
+constexpr uint16_t API_PORT = 80;
+constexpr uint16_t AUDIO_PORT = 81;
+
+// Log the X-Forwarded-For client instead of the peer address. Only enable
+// behind a reverse proxy you control — anyone can forge the header otherwise.
+// It never affects authentication, only what the serial log prints.
+constexpr bool TRUST_PROXY_HEADERS = false;
+
+// Live telemetry socket: push on change, no faster than this, and always at
+// least once per heartbeat so a client can distinguish "quiet" from "dead".
+constexpr uint32_t WS_MIN_PUSH_INTERVAL_MS = 100;
+constexpr uint32_t WS_HEARTBEAT_MS = 2000;
+
+// Backoff after a failed push (the worker retries the same message, so
+// without this a dead server would be hammered every loop pass).
 constexpr uint32_t GOTIFY_RETRY_BACKOFF_MS = 30000;
 
-// Upper bound on how long one push may block the sensor loop.
+// Upper bound on how long one push may block the delivery worker.
 constexpr uint16_t GOTIFY_TIMEOUT_MS = 5000;
+
+// Delivery queue drained by a worker task, so detection never waits for the
+// network. Alerts are rare; a short queue that drops the oldest entry is
+// better than unbounded buffering of stale news.
+constexpr size_t GOTIFY_QUEUE_DEPTH = 8;
+constexpr size_t GOTIFY_MESSAGE_MAX = 128;
+constexpr uint8_t GOTIFY_MAX_ATTEMPTS = 3;
 
 // Sound detection: peak-to-peak ADC swing within one sample window.
 constexpr uint32_t SOUND_SAMPLE_WINDOW_MS = 50;

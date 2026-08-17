@@ -22,16 +22,49 @@ patient with the fix timeline.
 
 The firmware is designed for a trusted home LAN and deliberately assumes it:
 
-- **The HTTP API is plain HTTP.** Every endpoint requires `API_TOKEN`, but the
-  token and the audio stream travel unencrypted. Anyone who can passively
-  observe your LAN can capture both. Do not expose port 80 of the device to the
-  internet, and do not port-forward it.
+- **The API is plain HTTP and plain WebSocket.** Every endpoint on port 80
+  (`/status`, `/calibrate`, `/ws`) and port 81 (`/audio.pcm`) requires
+  `API_TOKEN`, but the token, the telemetry and the audio stream all travel
+  unencrypted. Anyone who can passively observe your LAN can capture them. Do
+  not expose either port to the internet, and do not port-forward them.
+- **The device does not terminate TLS.** There is no `https://` or `wss://`
+  listener on the ESP32 — the async server has no TLS support and the chip has
+  no headroom for it. To reach the node from outside your LAN, put a reverse
+  proxy in front of it and let the proxy terminate TLS:
+
+  ```nginx
+  location /audio.pcm {
+      proxy_pass http://watchdog.local:81;
+      proxy_buffering off;              # it is a live stream
+      proxy_read_timeout 24h;
+  }
+
+  location / {
+      proxy_pass http://watchdog.local:80;
+      proxy_http_version 1.1;           # required for the WebSocket upgrade
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+      proxy_read_timeout 1h;            # longer than WS_HEARTBEAT_MS
+  }
+  ```
+
+  Clients then use `https://` and `wss://`; the firmware is unchanged and still
+  sees plain HTTP on the LAN hop. That hop is only as private as the network
+  between the proxy and the device, so keep them on the same trusted segment.
+- **`TRUST_PROXY_HEADERS` affects logging only.** When enabled it makes the
+  serial log show `X-Forwarded-For` instead of the proxy's own address. The
+  header is trivially forgeable and is never used for authentication or access
+  control. Leave it `false` unless a proxy you control is the only way in.
 - **There is no rate limiting.** A device on your LAN can guess tokens as fast
   as the ESP32 answers. Use a long random `API_TOKEN`; the build refuses
   anything shorter than 16 characters. Request parsing also happens before
-  authentication, so an unauthenticated client on the LAN can keep the API task
+  authentication, so an unauthenticated client on the LAN can keep the server
   busy or exhaust its heap. That is a denial of service on a sensor, not a
   disclosure, and it is accepted.
+- **The telemetry socket accepts one client, and the newest wins.** An
+  authenticated client can disconnect another authenticated client by
+  connecting. Both hold the same token, so this is not a privilege boundary —
+  it exists so a half-dead socket cannot lock you out of your own sensor.
 - **The device streams live audio and occupancy on request.** Treat `API_TOKEN`
   as being as sensitive as a microphone in your home, because that is what it
   unlocks.
@@ -39,6 +72,10 @@ The firmware is designed for a trusted home LAN and deliberately assumes it:
   against the pinned Let's Encrypt root in `src/certs.h`. An `http://` Gotify
   URL sends your Gotify application token in cleartext — only use one on a
   network you control.
+- **mDNS announces the node on the LAN.** `watchdog.local` and its HTTP/WS
+  services are broadcast unauthenticated, so anyone on the network learns the
+  device exists and where it listens. The token still guards every endpoint;
+  this only removes the obscurity of an unknown IP.
 - **`record.ps1` / `record.sh` pass the token to `ffmpeg` as an argument.**
   While a recording runs it is visible in the local process list. That is
   acceptable on a personal machine; it is not on a shared one.

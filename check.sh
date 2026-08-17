@@ -14,5 +14,6 @@ fi
     cppcheck --project=compile_commands.json '--file-filter=src/*' \
     --enable=warning,style,performance,portability \
     --inline-suppr '--suppress=*:*platformio*packages*' \
+    '--suppress=*:*libdeps*' \
     --suppress=missingIncludeSystem --error-exitcode=1
 "$pio" run -e esp32-c3-supermini

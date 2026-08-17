@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <WiFi.h>
 
+#include <atomic>
+
 #include <DistanceTracker.h>
 #include <PresenceMonitor.h>
 #include <SoundDetector.h>
@@ -10,6 +12,7 @@
 #include "config.h"
 #include "net.h"
 #include "radar.h"
+#include "ws.h"
 
 namespace
 {
@@ -17,15 +20,24 @@ namespace
     PresenceMonitor presenceMonitor(PRESENCE_DEBOUNCE_MS);
     DistanceTracker distanceTracker(DISTANCE_DELTA_CM, DISTANCE_UPDATE_MIN_INTERVAL_MS);
 
-    // Logs and pushes; true when delivered (detectors confirm on success only).
-    bool notify(const String &message)
+    std::atomic<bool> calibrationRequested{false};
+
+    // Worth waking a phone for: goes to the socket and to the push queue.
+    // Queueing always succeeds, so detectors confirm immediately and delivery
+    // (including retries) is the worker's problem.
+    void alert(const char *type, const String &message)
     {
-        if (pushBackingOff())
-        {
-            return false; // don't spam the serial log with doomed attempts
-        }
-        Serial.println("notify: " + message);
-        return pushGotify(message);
+        Serial.println("alert: " + message);
+        wsPublishEvent(type, message);
+        queueGotify(message);
+    }
+
+    // Live-only: the socket already streams position continuously, so pushing
+    // the same thing to a phone would be noise.
+    void live(const char *type, const String &message)
+    {
+        Serial.println("live: " + message);
+        wsPublishEvent(type, message);
     }
 
     String personDetectedMessage()
@@ -37,15 +49,24 @@ namespace
 
 void notifyBootOnline()
 {
-    notify("Sensor node online: " + WiFi.localIP().toString());
+    alert("boot", "Sensor node online: " + WiFi.localIP().toString());
 }
 
-void startCalibration()
+void requestCalibration()
 {
-    radarCalibrateBackground();
-    notify("Radar calibration starts in 10s - leave the room! (takes ~2 min)");
+    calibrationRequested = true;
 }
 
+void pollCalibrationRequest()
+{
+    if (!calibrationRequested.exchange(false))
+    {
+        return;
+    }
+    radarCalibrateBackground();
+    alert("calibration",
+          "Radar calibration starts in 10s - leave the room! (takes ~2 min)");
+}
 void notifyPresenceChanges(bool presentNow)
 {
     const PresenceMonitor::Event event = presenceMonitor.onSample(presentNow, millis());
@@ -55,12 +76,10 @@ void notifyPresenceChanges(bool presentNow)
     }
 
     const bool detected = event == PresenceMonitor::Event::Detected;
-    if (!notify(detected ? personDetectedMessage() : "Presence cleared"))
-    {
-        return;
-    }
-
+    alert(detected ? "presence" : "cleared",
+          detected ? personDetectedMessage() : "Presence cleared");
     presenceMonitor.notificationSent();
+
     if (detected)
     {
         distanceTracker.notificationSent(radarReport().primaryDistanceCm(), millis());
@@ -85,10 +104,8 @@ void notifyMovement()
         return;
     }
 
-    if (notify("Person moved to " + radarDescribeTarget()))
-    {
-        distanceTracker.notificationSent(distanceCm, millis());
-    }
+    live("moved", "Person moved to " + radarDescribeTarget());
+    distanceTracker.notificationSent(distanceCm, millis());
 }
 
 void notifyLoudSounds(const LevelWindow &mic)
@@ -98,8 +115,6 @@ void notifyLoudSounds(const LevelWindow &mic)
         return;
     }
 
-    if (notify("Sound detected (level " + String(mic.peakToPeak()) + ")"))
-    {
-        soundDetector.notificationSent(millis());
-    }
+    alert("sound", "Sound detected (level " + String(mic.peakToPeak()) + ")");
+    soundDetector.notificationSent(millis());
 }

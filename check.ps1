@@ -15,6 +15,7 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     cppcheck --project=compile_commands.json '--file-filter=src/*' `
     --enable=warning,style,performance,portability `
     --inline-suppr '--suppress=*:*platformio*packages*' `
+    '--suppress=*:*libdeps*' `
     --suppress=missingIncludeSystem --error-exitcode=1
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 

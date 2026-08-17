@@ -1,14 +1,17 @@
 #include "api.h"
 
-#include <WebServer.h>
+#include <ESPAsyncWebServer.h>
 
 #include <ApiToken.h>
 
-#include "audio_stream.h"
+#include "audio_api.h"
+#include "config.h"
 #include "mic.h"
+#include "net.h"
 #include "notifications.h"
 #include "radar.h"
 #include "secrets.h"
+#include "ws.h"
 
 // An empty or guessable token would leave the LAN API wide open.
 static_assert(sizeof(API_TOKEN) - 1 >= 16,
@@ -16,52 +19,52 @@ static_assert(sizeof(API_TOKEN) - 1 >= 16,
 
 namespace
 {
-    WebServer server(80);
+    AsyncWebServer server(API_PORT);
 
-    void apiServerTask(void *)
+    bool authorized(AsyncWebServerRequest *request)
     {
-        while (true)
+        const AsyncWebHeader *header = request->getHeader("Authorization");
+        if (header != nullptr && apiTokenAccepted(header->value()))
         {
-            server.handleClient();
-            vTaskDelay(pdMS_TO_TICKS(1));
+            return true;
         }
+        header = request->getHeader("X-Api-Key");
+        return header != nullptr && apiTokenAccepted(header->value());
     }
 
-    bool authorized()
+    // Behind a TLS-terminating proxy every peer address is the proxy's, which
+    // makes the log useless. The forwarded address is never trusted for
+    // anything but this line.
+    String clientLabel(AsyncWebServerRequest *request)
     {
-        String supplied = server.header("Authorization");
-        const size_t prefix = ApiToken::bearerPrefixLength(supplied.c_str());
-        if (prefix > 0)
+        if (TRUST_PROXY_HEADERS)
         {
-            supplied.remove(0, prefix);
+            const AsyncWebHeader *forwarded = request->getHeader("X-Forwarded-For");
+            if (forwarded != nullptr && !forwarded->value().isEmpty())
+            {
+                return forwarded->value();
+            }
         }
-        else
-        {
-            supplied = server.header("X-Api-Key");
-        }
-        return ApiToken::matches(supplied.c_str(), supplied.length(),
-                                 API_TOKEN, sizeof(API_TOKEN) - 1);
+        return request->client()->remoteIP().toString();
     }
 
-    // True when the request carried a valid token; sends the 401 otherwise.
-    bool rejectUnauthorized()
-    {
-        if (authorized())
+    AsyncMiddlewareFunction requireToken([](AsyncWebServerRequest *request,
+                                            ArMiddlewareNext next)
+                                         {
+        if (!authorized(request))
         {
-            return false;
-        }
-        Serial.printf("api: %s rejected, no valid API token\n", server.uri().c_str());
-        server.sendHeader("WWW-Authenticate", "Bearer");
-        server.send(401, "application/json", "{\"error\":\"missing or wrong API token\"}");
-        return true;
-    }
-
-    void handleStatus()
-    {
-        if (rejectUnauthorized())
-        {
+            Serial.printf("api: %s from %s rejected, no valid API token\n",
+                          request->url().c_str(), clientLabel(request).c_str());
+            AsyncWebServerResponse *response = request->beginResponse(
+                401, "application/json", "{\"error\":\"missing or wrong API token\"}");
+            response->addHeader("WWW-Authenticate", "Bearer");
+            request->send(response);
             return;
         }
+        next(); });
+
+    String statusJson()
+    {
         const Ld2412Parser::Report &radar = radarReport();
         const LevelWindow mic = micLastWindow();
         String json = "{";
@@ -76,59 +79,47 @@ namespace
         json += ",\"micMax\":" + String(mic.maxLevel());
         json += ",\"audioStreaming\":" + String(micPcmStreaming() ? "true" : "false");
         json += ",\"audioDroppedSamples\":" + String(micDroppedSamples());
+        json += ",\"telemetryClient\":" + String(wsClientConnected() ? "true" : "false");
+        json += ",\"pushBackingOff\":" + String(pushBackingOff() ? "true" : "false");
+        json += ",\"pushLost\":" + String(gotifyLostCount());
         json += ",\"uptimeMs\":" + String(millis());
         json += "}";
-        server.send(200, "application/json", json);
+        return json;
     }
+}
 
-    void handleCalibrate()
+bool apiTokenAccepted(const String &headerValue)
+{
+    String supplied = headerValue;
+    const size_t prefix = ApiToken::bearerPrefixLength(supplied.c_str());
+    if (prefix > 0)
     {
-        if (rejectUnauthorized())
-        {
-            return;
-        }
-        startCalibration();
-        server.send(202, "application/json", "{\"status\":\"calibration scheduled in 10s\"}");
+        supplied.remove(0, prefix);
     }
-
-    void handleAudio()
-    {
-        if (rejectUnauthorized())
-        {
-            return;
-        }
-        switch (startAudioPcmStream(server.client()))
-        {
-        case AudioStreamStartResult::Started:
-            return;
-        case AudioStreamStartResult::Busy:
-            server.send(409, "application/json",
-                        "{\"error\":\"an audio stream is already active\"}");
-            return;
-        case AudioStreamStartResult::ResourceFailure:
-            server.send(503, "application/json",
-                        "{\"error\":\"audio stream task could not be started\"}");
-            return;
-        }
-    }
+    return ApiToken::matches(supplied.c_str(), supplied.length(),
+                             API_TOKEN, sizeof(API_TOKEN) - 1);
 }
 
 void apiBegin()
 {
-    // WebServer only exposes headers listed here (it always adds Authorization).
-    static const char *headerKeys[] = {"X-Api-Key"};
-    server.collectHeaders(headerKeys, 1);
+    server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request)
+              { request->send(200, "application/json", statusJson()); })
+        .addMiddleware(&requireToken);
 
-    server.on("/status", HTTP_GET, handleStatus);
-    server.on("/calibrate", HTTP_POST, handleCalibrate);
-    server.on("/audio.pcm", HTTP_GET, handleAudio);
-    server.onNotFound([]
-                      { server.send(404, "application/json", "{\"error\":\"not found\"}"); });
+    server.on("/calibrate", HTTP_POST, [](AsyncWebServerRequest *request)
+              {
+        requestCalibration();
+        request->send(202, "application/json",
+                      "{\"status\":\"calibration scheduled in 10s\"}"); })
+        .addMiddleware(&requireToken);
+
+    wsAttach(server, requireToken);
+
+    server.onNotFound([](AsyncWebServerRequest *request)
+                      { request->send(404, "application/json", "{\"error\":\"not found\"}"); });
     server.begin();
-    if (xTaskCreate(apiServerTask, "http-api", 8192, nullptr, 1, nullptr) != pdPASS)
-    {
-        Serial.println("api: server task allocation failed");
-        return;
-    }
-    Serial.println("api: listening on port 80 (/status, /calibrate, /audio.pcm)");
+    audioApiBegin();
+
+    Serial.printf("api: port %u (/status, /calibrate, /ws), port %u (/audio.pcm)\n",
+                  API_PORT, AUDIO_PORT);
 }

@@ -6,9 +6,10 @@ How the firmware is structured and why. For wiring see
 ## Design principle
 
 **Decision logic is separated from I/O.** Everything that decides *whether* to
-notify lives in [`lib/detectors/`](../lib/detectors/) as header-only, pure C++
-classes with no Arduino dependency — time is injected as a parameter, never
-read inside. That makes the interesting behavior unit-testable on the host
+act — notify, send a telemetry frame, accept a token — lives in
+[`lib/`](../lib/) as header-only, pure C++ classes with no Arduino dependency:
+time is injected as a parameter, never read inside, and there is no heap or
+hardware access. That makes the interesting behavior unit-testable on the host
 (`pio test -e native`) without a board. Everything that touches hardware or
 the network stays in [`src/`](../src/) as thin glue.
 
@@ -24,12 +25,14 @@ flowchart LR
         LOOP[main.cpp<br/>composition only]
         MICG[mic.cpp<br/>48kHz ADC DMA]
         AUDIO[audio_stream.cpp<br/>PCM response writer]
+        AAPI[audio_api.cpp<br/>sync server, port 81]
         RADG[radar.cpp<br/>UART parsing + tuning]
-        NOTIF[notifications.cpp<br/>events → push]
-        API[api.cpp<br/>HTTP API task]
+        NOTIF[notifications.cpp<br/>events → alert vs live]
+        API[api.cpp<br/>async REST, port 80]
+        WSG[ws.cpp<br/>telemetry socket]
         CBTN[calibration_button.cpp<br/>hold → calibrate]
         SLOG[status_log.cpp<br/>serial diagnostics]
-        NET[net.cpp<br/>WiFi + HTTP]
+        NET[net.cpp<br/>WiFi + mDNS + push queue]
     end
 
     subgraph lib [lib/ — pure logic, unit-tested]
@@ -41,10 +44,14 @@ flowchart LR
         DT[DistanceTracker<br/>movement deltas]
         LP[Ld2412Parser<br/>data frame decoding]
         LC[Ld2412Commands<br/>command frame builders]
+        TG[TelemetryGate<br/>send-on-change + heartbeat]
+        NQ[NotificationQueue<br/>bounded, drop-oldest]
     end
 
     MIC -->|ADC1 DMA| MICG --> LW
     MICG --> PCM --> AUDIO -->|HTTP/TCP| RECORDER[FFmpeg recorder]
+    AAPI --> AUDIO
+    AAPI --> AT
     RADAR -->|digitalRead + UART| RADG --> LP
     RADG --> LC
     BTN --> CBTN
@@ -52,7 +59,11 @@ flowchart LR
     LOOP --> RADG
     LOOP --> NOTIF
     LOOP --> API
+    LOOP --> WSG
     API --> AT
+    API --> AAPI
+    API --> WSG
+    WSG --> TG
     LOOP --> CBTN
     LOOP --> SLOG
     API --> NOTIF
@@ -60,15 +71,17 @@ flowchart LR
     NOTIF --> SD
     NOTIF --> PM
     NOTIF --> DT
-    NOTIF -->|pushGotify| NET -->|HTTPS POST| GOTIFY[Gotify server]
+    NOTIF -->|live events + telemetry| WSG -->|WebSocket| APP[Phone app / Node client]
+    NOTIF -->|queueGotify| NET --> NQ
+    NET -->|HTTPS POST, worker task| GOTIFY[Gotify server]
 ```
 
 ## Loop lifecycle
 
 `setup()` runs once after boot/reset: serial, mic, radar and button init,
 radar tuning (per-gate sensitivities via the LD2412 command protocol), WiFi
-connect, HTTP API start, and a "Sensor node online" push. Then `loop()`
-repeats forever:
+connect, push worker start, mDNS announcement, API start, and a "Sensor node
+online" alert. Then `loop()` repeats forever:
 
 1. **`micSampleWindow()`** — waits for the next 50ms `LevelWindow` produced by
   the dedicated ADC task. Hardware-timed DMA sampling continues at 48kHz
@@ -76,18 +89,56 @@ repeats forever:
   scheduling gap. The last completed window is kept for the HTTP API.
 2. **`radarPoll()`** — feeds pending LD2412 UART bytes into `Ld2412Parser`
    for distance/energy reports.
-3. **`calibrationButtonPoll()`** — BOOT button held ~1s starts radar
-   background calibration (also available via `POST /calibrate`).
-4. **`notifyPresenceChanges()`** — feeds the radar pin into `PresenceMonitor`;
-   pushes "Person detected at X" / "Presence cleared" on debounced edges.
-5. **`notifyMovement()`** — while present, `DistanceTracker` pushes "Person
-   moved to X" when the distance shifts beyond `DISTANCE_DELTA_CM`.
-6. **`notifyLoudSounds()`** — feeds the window's peak-to-peak into
-   `SoundDetector`; pushes "Sound detected" above threshold, then cools down.
-7. **`logStatusEverySecond()`** — one diagnostic line per second on serial.
+3. **`calibrationButtonPoll()`** — BOOT button held ~1s requests radar
+   background calibration (also available via `POST /calibrate` and the `ws`
+   `calibrate` command).
+4. **`pollCalibrationRequest()`** — runs a pending calibration request here,
+   on the sensor loop.
+5. **`notifyPresenceChanges()`** — feeds the radar pin into `PresenceMonitor`;
+   alerts "Person detected at X" / "Presence cleared" on debounced edges.
+6. **`notifyMovement()`** — while present, `DistanceTracker` emits "Person
+   moved to X" when the distance shifts beyond `DISTANCE_DELTA_CM`. Live sink
+   only — the socket already streams position continuously.
+7. **`notifyLoudSounds()`** — feeds the window's peak-to-peak into
+   `SoundDetector`; alerts "Sound detected" above threshold, then cools down.
+8. **`wsPublishTelemetry()`** — builds the sensor snapshot and hands it to the
+   socket when `TelemetryGate` says it changed or the heartbeat is due.
+9. **`logStatusEverySecond()`** — one diagnostic line per second on serial.
 
-One pass takes ~50ms because it waits for the next mic window. The ADC task
-continues independently during the occasional blocking HTTP push.
+One pass takes ~50ms because it waits for the next mic window. Nothing in the
+loop blocks on the network: pushes are queued for a worker task, and telemetry
+frames are dropped rather than buffered when the socket is backed up.
+
+## Why the JSON is built in the loop
+
+AsyncTCP runs handler callbacks on its own task, and blocking that task stalls
+every connection on port 80. Two rules follow.
+
+**Handlers never block.** `POST /calibrate` and the socket's `calibrate`
+command only set a flag; `pollCalibrationRequest()` runs the actual command on
+the sensor loop. `radarCalibrateBackground()` waits ~300ms for UART
+acknowledgements, which was harmless on the old dedicated server task and is
+not harmless here. The BOOT button goes through the same request path, so
+there is one way to start a calibration rather than two.
+
+**Handlers never read sensor state.** If callbacks called `radarReport()` and
+`micLastWindow()` directly, every sensor value would become shared mutable
+state across three tasks. Instead `wsPublishTelemetry()` runs on the sensor
+loop, snapshots the values there, renders the JSON, and hands a finished
+string to the socket.
+
+## Ports
+
+| Port | Server | Why |
+|---|---|---|
+| 80 | `AsyncWebServer` | `/status`, `/calibrate`, `/ws` — many short requests plus one long-lived socket |
+| 81 | `WebServer` (sync) | `/audio.pcm` — holds its socket for the whole recording in a dedicated task |
+
+The PCM stream cannot move to the async server without rewriting it as a
+chunked response whose filler never blocks; `micReadPcm()` blocks by design.
+Keeping it synchronous on its own port isolates that from the migration.
+WebServer.h and ESPAsyncWebServer.h also both define `HTTP_GET`, so the two
+live in separate translation units.
 
 ## Audio pipeline
 
@@ -97,25 +148,63 @@ removes the MAX9814's DC bias, then maps the complete ADC range into signed
 16-bit little-endian PCM without clipping. When a client is recording, samples
 also enter a bounded 8192-sample ring buffer.
 
-`api.cpp` authenticates `GET /audio.pcm`, then `audio_stream.cpp` drains that
-ring buffer to the HTTP client. The API runs in a dedicated task, so network
-backpressure never blocks ADC sampling or the sensor loop. When the buffer
-fills, new stream samples are dropped and counted in `audioDroppedSamples`.
-Sound detection still uses every ADC sample regardless of stream state.
+`api.cpp` authenticates the request on port 80; `audio_api.cpp` authenticates
+`GET /audio.pcm` on port 81 and `audio_stream.cpp` drains the ring buffer to
+the HTTP client from a dedicated task, so network backpressure never blocks
+ADC sampling or the sensor loop. When the buffer fills, new stream samples are
+dropped and counted in `audioDroppedSamples`. Sound detection still uses every
+ADC sample regardless of stream state.
 
-## Notification semantics
+## Delivery semantics
 
-Both detectors share the same delivery contract:
+Events go to two sinks with deliberately different guarantees.
 
-- **Events repeat until confirmed.** A detector keeps reporting its event
-  until the caller confirms delivery via `notificationSent()`. A failed HTTP
-  push (WiFi drop, server error) is therefore retried on the next loop pass,
-  throttled by GOTIFY_RETRY_BACKOFF_MS so a failing server isn't hammered —
-  no event is silently lost.
-- **Debounce (presence):** the radar state must hold for
-  `PRESENCE_DEBOUNCE_MS` before an edge counts; flicker resets the timer.
-- **Cooldown (sound):** after a *delivered* sound notification, further sound
-  events are suppressed for `SOUND_NOTIFY_COOLDOWN_MS`.
+**Alerts — presence, sound, boot, calibration.** These are worth waking a
+phone for, so they go through `queueGotify()` into a bounded
+`NotificationQueue` drained by a worker task:
+
+- **Queueing always succeeds**, so a detector confirms delivery immediately
+  and the sensor loop never waits for the network. Retries, timeouts and
+  backoff are the worker's problem.
+- **The worker retries** a failed push up to `GOTIFY_MAX_ATTEMPTS` times,
+  waiting `GOTIFY_RETRY_BACKOFF_MS` between attempts so a dead server is not
+  hammered.
+- **A full queue discards the oldest message**, not the newest. An alert about
+  what is happening now beats one about what happened a minute ago. Discards
+  and give-ups are counted and exposed as `pushLost` on `GET /status`.
+
+**Live updates — movement and continuous telemetry.** These go to the
+WebSocket only:
+
+- **Frames are disposable.** If no client is connected, or the client's queue
+  is full, the frame is dropped. `TelemetryGate` does not record it as sent,
+  so the next loop pass retries — but nothing is ever buffered on behalf of an
+  absent client.
+- **Send on change, not on schedule.** A frame goes out only when the sensor
+  values differ from the last delivered one and `WS_MIN_PUSH_INTERVAL_MS` has
+  passed. Change detection hashes the raw values, not the rendered JSON, so a
+  ticking `uptimeMs` never counts as a change.
+- **A heartbeat every `WS_HEARTBEAT_MS`** goes out regardless, so a client can
+  distinguish a still room from a dead link.
+
+The detector contracts are unchanged — debounce for presence, cooldown for
+sound, delta plus min-interval for movement — but "delivered" now means
+"handed to the right sink" rather than "the HTTP POST returned 2xx".
+
+## Authentication
+
+One token guards everything. On the async server it is enforced by an
+`AsyncMiddlewareFunction` attached to each handler, including the WebSocket:
+the middleware chain runs before `AsyncWebSocket::handleRequest()`, so a bad
+token gets a real HTTP `401` and the connection is never upgraded. Rejecting
+after the handshake would look like a mystery disconnect to the client.
+
+The comparison itself stays in `lib/auth/ApiToken.h` (constant-time, native
+tests) and both servers call the same `apiTokenAccepted()`, so there is one
+implementation of the firmware's only security-critical decision.
+
+Browsers cannot set headers on a WebSocket handshake, which is why this
+endpoint targets native and Node clients rather than a browser dashboard.
 
 ## Signal reference (mic)
 
@@ -151,20 +240,24 @@ with the send/sequence logic in `radar.cpp`:
 
 ## HTTP API
 
-`api.cpp` runs a `WebServer` task on port 80. All three endpoints —
-`GET /status`, `POST /calibrate` and `GET /audio.pcm` — require `API_TOKEN`
-from secrets.h, supplied as `Authorization: Bearer` or `X-Api-Key`. The
-comparison itself lives in `lib/auth/ApiToken.h` so it can be tested natively:
-it touches every byte of the expected token, so a rejection time does not
-reveal how many leading bytes were right. A token shorter than 16 characters
-fails the build. The audio handler owns the API task while its client is
-connected, but ADC sampling, radar polling, notifications, and serial
-diagnostics continue in their own execution paths. All handlers reuse module
-accessors rather than owning sensor state.
+`api.cpp` runs an `AsyncWebServer` on port 80 serving `GET /status`,
+`POST /calibrate` and the `/ws` telemetry socket; `audio_api.cpp` runs a
+synchronous `WebServer` task on port 81 serving `GET /audio.pcm`. Every
+endpoint requires `API_TOKEN` from secrets.h, supplied as
+`Authorization: Bearer` or `X-Api-Key`, and a token shorter than 16 characters
+fails the build. All handlers reuse module accessors rather than owning sensor
+state.
 
-The transport is plain HTTP, so the token and the audio both cross the LAN in
-the clear. [SECURITY.md](../SECURITY.md) states what that does and does not
-protect against.
+A recording owns the audio task while its client is connected, but ADC
+sampling, radar polling, notifications, and serial diagnostics continue in
+their own execution paths — and the async server on port 80 stays responsive
+throughout, which it did not when both shared one synchronous task.
+
+The transport is plain HTTP and plain WebSocket, so the token, the telemetry
+and the audio all cross the LAN in the clear. The device terminates no TLS; a
+reverse proxy in front of it provides `https://` and `wss://`.
+[SECURITY.md](../SECURITY.md) states what that does and does not protect
+against, and includes a proxy configuration.
 
 ## Extension points
 

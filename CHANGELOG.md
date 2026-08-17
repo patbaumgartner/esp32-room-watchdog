@@ -6,8 +6,68 @@ releases yet — flash `main`. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Live telemetry over WebSocket at `GET /ws`.** The full sensor state streams
+  at up to 10Hz to one authenticated client, with `hello`, `telemetry` and
+  `event` JSON messages, and `calibrate` accepted from the client. Frames are
+  sent on change (never faster than `WS_MIN_PUSH_INTERVAL_MS`) with a forced
+  heartbeat every `WS_HEARTBEAT_MS`, so a client can tell a quiet room from a
+  dead link.
+- **mDNS.** The node announces itself as `watchdog.local` with its HTTP and
+  WebSocket services, so no client needs a hardcoded IP. Configurable via
+  `MDNS_HOSTNAME`.
+- **Queued push delivery.** Alerts go into a bounded `NotificationQueue`
+  drained by a worker task, which retries up to `GOTIFY_MAX_ATTEMPTS` times.
+  Detection no longer waits for the network at all.
+- `lib/telemetry/TelemetryGate.h` and `lib/notify/NotificationQueue.h` — the
+  socket's send policy and the push queue are pure logic with native tests,
+  like the rest of the decision layer. 17 new test cases.
+- `GET /status` reports `telemetryClient`, `pushBackingOff` and `pushLost`.
+- `TRUST_PROXY_HEADERS` logs the `X-Forwarded-For` client when the node sits
+  behind a reverse proxy. Logging only; never used for authentication.
+- `SECURITY.md` documents the reverse-proxy setup for reaching the node over
+  `https://` / `wss://`, since the device itself terminates no TLS.
+- `check.sh` and `record.sh` for Linux and macOS.
+- `lib/auth/ApiToken.h` — the token comparison moved out of `api.cpp` so it is
+  covered by native tests like the rest of the decision logic.
+- `pio check` (cppcheck) in the local quality gate and in CI.
+- `SECURITY.md` with the threat model, `CODE_OF_CONDUCT.md`, issue and pull
+  request templates.
+- CI builds weekly, uploads `firmware.bin` as an artifact, and runs with
+  least-privilege permissions, a concurrency group, and a job timeout.
+
 ### Changed
 
+- **Breaking — `GET /audio.pcm` moved to port 81.** The REST API and WebSocket
+  are now served by `ESPAsyncWebServer` on port 80, but a recording holds its
+  socket for minutes, which an async handler must never do. It keeps the
+  synchronous server on its own port. `record.sh` and `record.ps1` follow
+  automatically; a reverse proxy needs a second route.
+- **Breaking — `record.ps1 -DeviceIp` is now `-Device`,** and both recorders
+  default to `watchdog.local:81` instead of requiring an IP.
+- **Breaking — movement updates no longer reach Gotify.** "Person moved to X"
+  is a live event on the WebSocket only. The socket streams position
+  continuously, so pushing the same thing to a phone was noise. Presence,
+  sound, boot and calibration alerts are unchanged.
+- **The firmware uses the `huge_app` partition layout.** The async stack pushed
+  the default 1.3MB app partition to ~97% full; there is no OTA here, so the
+  second app slot is traded for headroom (now ~40%). Reflashing rewrites the
+  partition table.
+- Detectors now confirm delivery as soon as an event is queued rather than
+  when an HTTP POST returns 2xx. Retries, timeouts and backoff moved to the
+  delivery worker, so a failing Gotify server can no longer stall the sensor
+  loop or make a detector repeat its event every pass.
+- The API token check moved to a shared `apiTokenAccepted()` used by both
+  servers, enforced on the async side by middleware that also covers the
+  WebSocket handshake — a bad token gets a real `401` instead of an upgrade
+  followed by a close.
+- Calibration requests from the API, the WebSocket and the BOOT button all run
+  on the sensor loop via `pollCalibrationRequest()`. The command blocks ~300ms
+  waiting for UART acknowledgements, which must not happen inside an AsyncTCP
+  callback.
+- cppcheck suppresses findings from vendored sources under `.pio/libdeps`, the
+  way it already did for the platform packages.
 - **Breaking — `GET /status` now requires the API token.** It used to return
   live occupancy (presence, distance, mic level, uptime) to anything that could
   reach port 80. Send `Authorization: Bearer <API_TOKEN>` or
@@ -28,17 +88,6 @@ releases yet — flash `main`. Format follows
 - The quality gate runs a pinned, cross-platform cppcheck package against
   PlatformIO's compilation database; pioarduino's bundled Linux analyzer
   depends on the obsolete `libpcre3` runtime.
-
-### Added
-
-- `check.sh` and `record.sh` for Linux and macOS.
-- `lib/auth/ApiToken.h` — the token comparison moved out of `api.cpp` so it is
-  covered by native tests like the rest of the decision logic.
-- `pio check` (cppcheck) in the local quality gate and in CI.
-- `SECURITY.md` with the threat model, `CODE_OF_CONDUCT.md`, issue and pull
-  request templates.
-- CI builds weekly, uploads `firmware.bin` as an artifact, and runs with
-  least-privilege permissions, a concurrency group, and a job timeout.
 
 ### Fixed
 

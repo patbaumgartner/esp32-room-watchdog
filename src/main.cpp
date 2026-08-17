@@ -11,6 +11,7 @@
 #include "notifications.h"
 #include "radar.h"
 #include "status_log.h"
+#include "ws.h"
 
 void setup()
 {
@@ -29,6 +30,8 @@ void setup()
   Serial.println("Sensor node booting...");
   radarApplyTuning();
   connectWifi();
+  gotifyBegin();
+  mdnsBegin();
   apiBegin();
   notifyBootOnline();
 }
@@ -40,8 +43,10 @@ void loop()
   radarPoll();
 
   calibrationButtonPoll();
+  pollCalibrationRequest();
   notifyPresenceChanges(presentNow);
   notifyMovement();
   notifyLoudSounds(mic);
+  wsPublishTelemetry(presentNow, mic);
   logStatusEverySecond(presentNow, mic);
 }
