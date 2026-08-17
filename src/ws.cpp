@@ -41,7 +41,7 @@ namespace
 
     Snapshot takeSnapshot(bool presenceNow, const LevelWindow &mic)
     {
-        const Ld2412Parser::Report &radar = radarReport();
+        const Ld2412Parser::Report radar = radarReport();
         Snapshot snapshot = {};
         snapshot.presence = presenceNow ? 1 : 0;
         snapshot.targetState = radar.targetState;

@@ -65,7 +65,7 @@ namespace
 
     String statusJson()
     {
-        const Ld2412Parser::Report &radar = radarReport();
+        const Ld2412Parser::Report radar = radarReport();
         const LevelWindow mic = micLastWindow();
         String json = "{";
         json += "\"presence\":" + String(radarPresenceDetected() ? "true" : "false");

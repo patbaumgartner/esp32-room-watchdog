@@ -13,7 +13,7 @@ void logStatusEverySecond(bool presentNow, const LevelWindow &mic)
     }
     lastPrintMs = millis();
 
-    const Ld2412Parser::Report &radar = radarReport();
+    const Ld2412Parser::Report radar = radarReport();
     Serial.printf("presence=%d dist=%dcm(m:%dcm/%d%% s:%dcm/%d%%) micPP=%d\n",
                   presentNow, radar.primaryDistanceCm(),
                   radar.movingDistanceCm, radar.movingEnergy,

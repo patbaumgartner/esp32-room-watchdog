@@ -19,8 +19,10 @@ void radarCalibrateBackground();
 // Raw debounce-free state of the radar's OUT pin.
 bool radarPresenceDetected();
 
-// Latest decoded target report (distances in cm, energies 0-100).
-const Ld2412Parser::Report &radarReport();
+// Latest complete target report (distances in cm, energies 0-100). Returned by
+// value: the parser updates its copy field by field, so callers on the API and
+// WebSocket tasks need a snapshot rather than a live reference.
+Ld2412Parser::Report radarReport();
 
 // Human-readable target position, e.g. "1.5m (moving)"; "" when no target.
 String radarDescribeTarget();
