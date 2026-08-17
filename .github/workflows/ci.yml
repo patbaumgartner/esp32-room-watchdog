@@ -19,8 +19,15 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Windows is the documented flashing host and Linux is what CI and WSL use,
+    # so both quality-gate scripts run for real rather than only on one OS.
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -41,18 +48,20 @@ jobs:
 
       # secrets.h is gitignored; CI only needs it to compile, not to connect.
       - name: Create secrets.h from template
+        shell: bash
         run: cp src/secrets.h.example src/secrets.h
 
-      - name: Run unit tests (native)
-        run: pio test -e native
+      - name: Quality gate
+        if: runner.os == 'Linux'
+        run: ./check.sh
 
-      - name: Static analysis (cppcheck)
-        run: pio check -e esp32-c3-supermini --fail-on-defect=medium --fail-on-defect=high
-
-      - name: Build firmware (esp32-c3-supermini)
-        run: pio run -e esp32-c3-supermini
+      - name: Quality gate
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./check.ps1
 
       - name: Upload firmware
+        if: runner.os == 'Linux'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: firmware-${{ github.sha }}
