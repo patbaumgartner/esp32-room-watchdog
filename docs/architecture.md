@@ -143,8 +143,8 @@ than by resetting the gate from the callback.
 | 80 | `AsyncWebServer` | `/status`, `/calibrate`, `/ws` — many short requests plus one long-lived socket |
 | 81 | `WebServer` (sync) | `/audio.pcm` — holds its socket for the whole recording in a dedicated task |
 
-The PCM stream cannot move to the async server without rewriting it as a
-chunked response whose filler never blocks; `micReadPcm()` blocks by design.
+The PCM stream stays synchronous because an async filler is not allowed to
+wait, and a continuous stream needs one that can — the measurements are below.
 WebServer.h and ESPAsyncWebServer.h also both define `HTTP_GET`, so the two
 live in separate translation units.
 
@@ -173,8 +173,6 @@ minimum of one tick, and `TCP_TMR_INTERVAL` is baked into the precompiled IDF
 libraries. A dedicated task blocking on a semaphore wakes in ~1ms and is simply
 the right tool for a continuous stream. The cost is one extra port and one
 extra reverse-proxy route.
-WebServer.h and ESPAsyncWebServer.h also both define `HTTP_GET`, so the two
-live in separate translation units.
 
 ## Audio pipeline
 
