@@ -45,6 +45,8 @@ releases yet — flash `main`. Format follows
 - `409 Conflict` from `GET /audio.pcm` is now JSON like every other error.
 - A Gotify push now has explicit connect and read timeouts, so an unreachable
   server cannot stall presence and sound detection.
+- The Gotify retry backoff no longer compares against an absolute deadline, so
+  it survives the `millis()` rollover every ~49.7 days like the detectors do.
 - `-Wall -Wextra` are on for both environments.
 - Documented commands that never worked: `pio run` and `pio run -t upload` fail
   without `-e esp32-c3-supermini`, `docs/flashing.md` linked to a nonexistent

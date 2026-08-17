@@ -39,6 +39,8 @@ if ($wslPath.Success) {
             (Join-Path $build 'firmware.bin') `
             -Destination $temp
 
+        # WSL cannot see the COM port, so esptool runs here instead of via
+        # PlatformIO — these flash settings must track platformio.ini by hand.
         & $python $esptool --chip esp32c3 --port $Port --baud 921600 `
             --before default_reset --after hard_reset write_flash -z `
             --flash_mode dio --flash_freq 80m --flash_size 4MB `

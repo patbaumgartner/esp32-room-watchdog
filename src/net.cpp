@@ -13,7 +13,8 @@
 
 namespace
 {
-    uint32_t nextAttemptMs = 0;
+    uint32_t lastFailureMs = 0;
+    bool hadFailure = false;
 
     void logWifiDisconnect(arduino_event_id_t, arduino_event_info_t info)
     {
@@ -81,7 +82,7 @@ void connectWifi()
 
 bool pushBackingOff()
 {
-    return millis() < nextAttemptMs;
+    return hadFailure && millis() - lastFailureMs < GOTIFY_RETRY_BACKOFF_MS;
 }
 
 bool pushGotify(const String &message)
@@ -113,7 +114,8 @@ bool pushGotify(const String &message)
     if (!began)
     {
         Serial.println("gotify: http.begin failed");
-        nextAttemptMs = millis() + GOTIFY_RETRY_BACKOFF_MS;
+        lastFailureMs = millis();
+        hadFailure = true;
         return false;
     }
 
@@ -132,7 +134,8 @@ bool pushGotify(const String &message)
     const bool ok = code >= 200 && code < 300;
     if (!ok)
     {
-        nextAttemptMs = millis() + GOTIFY_RETRY_BACKOFF_MS;
+        lastFailureMs = millis();
+        hadFailure = true;
     }
     return ok;
 }
