@@ -21,9 +21,13 @@ releases yet — flash `main`. Format follows
   `WATCHDOG_API_TOKEN` or let the script prompt, so the token stays out of the
   shell history.
 - The build fails if `API_TOKEN` is shorter than 16 characters.
-- The `espressif32` platform is pinned to `7.0.1`. It used to float, so a
-  future major could have swapped in an Arduino core that does not have the ADC
-  API `mic.cpp` is built on.
+- The firmware now builds with the pinned pioarduino `55.03.311` platform
+  (Arduino-ESP32 3.3.11 and ESP-IDF 5.5.5) instead of Arduino-ESP32 2.0.17.
+- Microphone DMA sampling now uses ESP-IDF's supported `adc_continuous_*`
+  driver instead of the deprecated legacy ADC driver.
+- The quality gate runs a pinned, cross-platform cppcheck package against
+  PlatformIO's compilation database; pioarduino's bundled Linux analyzer
+  depends on the obsolete `libpcre3` runtime.
 
 ### Added
 
@@ -43,6 +47,10 @@ releases yet — flash `main`. Format follows
 - `deploy.ps1` runs the same gate as CI. It only ran the unit tests, so it
   could flash a build that had never been through cppcheck.
 - `409 Conflict` from `GET /audio.pcm` is now JSON like every other error.
+- Audio streaming runs in its own task, so a second recording request receives
+  the documented `409 Conflict` immediately instead of waiting for the first
+  client to disconnect.
+- Removed a duplicated exit statement from `record.ps1`.
 - A Gotify push now has explicit connect and read timeouts, so an unreachable
   server cannot stall presence and sound detection.
 - The Gotify retry backoff no longer compares against an absolute deadline, so

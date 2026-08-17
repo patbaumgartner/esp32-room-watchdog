@@ -24,8 +24,9 @@ build / upload / monitor workflow.
 pipx install platformio        # or: python3 -m pip install --user platformio
 ```
 
-The first build downloads the `espressif32` platform and the RISC-V toolchain
-(several hundred MB). It needs internet once; after that it works offline.
+The first build downloads the pinned pioarduino ESP32 platform and the RISC-V
+toolchain (several hundred MB). It needs internet once; after that it works
+offline.
 
 This project declares no `lib_deps`, so there are no third-party libraries to
 install.
@@ -128,7 +129,7 @@ From [`platformio.ini`](../platformio.ini):
 
 | Setting | Value | Meaning |
 |---|---|---|
-| `platform` | `espressif32@7.0.1` | Pinned so a build is reproducible and the bundled Arduino core does not change under you |
+| `platform` | pioarduino `55.03.311` | Pinned Arduino-ESP32 3.3.11 / ESP-IDF 5.5.5 platform for reproducible builds |
 | `board` | `lolin_c3_mini` | Closest match for the ESP32-C3 SuperMini |
 | `framework` | `arduino` | Arduino libraries, not the Arduino IDE |
 | `monitor_speed` | `115200` | Must match `Serial.begin()` in `main.cpp` |

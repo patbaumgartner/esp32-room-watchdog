@@ -97,7 +97,19 @@ namespace
         {
             return;
         }
-        streamAudioPcm(server.client());
+        switch (startAudioPcmStream(server.client()))
+        {
+        case AudioStreamStartResult::Started:
+            return;
+        case AudioStreamStartResult::Busy:
+            server.send(409, "application/json",
+                        "{\"error\":\"an audio stream is already active\"}");
+            return;
+        case AudioStreamStartResult::ResourceFailure:
+            server.send(503, "application/json",
+                        "{\"error\":\"audio stream task could not be started\"}");
+            return;
+        }
     }
 }
 

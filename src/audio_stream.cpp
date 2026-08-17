@@ -2,66 +2,80 @@
 
 #include <Arduino.h>
 
+#include <new>
+
 #include "config.h"
 #include "mic.h"
 
 namespace
 {
     constexpr size_t NETWORK_CHUNK_SAMPLES = 1024;
+    constexpr uint32_t STREAM_TASK_STACK_BYTES = 6144;
 
-    void sendJsonResponse(WiFiClient &client, const char *status, const char *body)
+    void streamAudioPcm(WiFiClient client)
     {
-        client.printf("HTTP/1.0 %s\r\n", status);
-        client.println("Content-Type: application/json");
+        client.setNoDelay(true);
+        client.println("HTTP/1.0 200 OK");
+        client.printf("Content-Type: audio/x-raw; format=S16LE; rate=%lu; channels=1\r\n",
+                      AUDIO_SAMPLE_RATE_HZ);
         client.println("Cache-Control: no-store");
         client.println("Connection: close");
-        client.printf("Content-Length: %u\r\n\r\n", strlen(body));
-        client.print(body);
-    }
-}
+        client.println();
 
-void streamAudioPcm(WiFiClient client)
-{
-    if (!micStartPcmStream())
-    {
-        sendJsonResponse(client, "409 Conflict",
-                         "{\"error\":\"an audio stream is already active\"}");
-        return;
-    }
-
-    client.setNoDelay(true);
-    client.println("HTTP/1.0 200 OK");
-    client.printf("Content-Type: audio/x-raw; format=S16LE; rate=%lu; channels=1\r\n",
-                  AUDIO_SAMPLE_RATE_HZ);
-    client.println("Cache-Control: no-store");
-    client.println("Connection: close");
-    client.println();
-
-    Serial.printf("audio: client %s connected\n", client.remoteIP().toString().c_str());
-    int16_t samples[NETWORK_CHUNK_SAMPLES];
-    while (client.connected() && WiFi.status() == WL_CONNECTED)
-    {
-        const size_t sampleCount = micReadPcm(samples, NETWORK_CHUNK_SAMPLES);
-        const uint8_t *bytes = reinterpret_cast<const uint8_t *>(samples);
-        const size_t byteCount = sampleCount * sizeof(int16_t);
-        size_t sent = 0;
-        while (sent < byteCount && client.connected())
+        Serial.printf("audio: client %s connected\n", client.remoteIP().toString().c_str());
+        int16_t samples[NETWORK_CHUNK_SAMPLES];
+        while (client.connected() && WiFi.status() == WL_CONNECTED)
         {
-            const size_t written = client.write(bytes + sent, byteCount - sent);
-            if (written == 0)
+            const size_t sampleCount = micReadPcm(samples, NETWORK_CHUNK_SAMPLES);
+            const uint8_t *bytes = reinterpret_cast<const uint8_t *>(samples);
+            const size_t byteCount = sampleCount * sizeof(int16_t);
+            size_t sent = 0;
+            while (sent < byteCount && client.connected())
+            {
+                const size_t written = client.write(bytes + sent, byteCount - sent);
+                if (written == 0)
+                {
+                    break;
+                }
+                sent += written;
+            }
+            if (sent < byteCount)
             {
                 break;
             }
-            sent += written;
         }
-        if (sent < byteCount)
-        {
-            break;
-        }
+
+        const uint32_t dropped = micDroppedSamples();
+        micStopPcmStream();
+        client.stop();
+        Serial.printf("audio: client disconnected, dropped %lu samples\n", dropped);
     }
 
-    const uint32_t dropped = micDroppedSamples();
-    micStopPcmStream();
-    client.stop();
-    Serial.printf("audio: client disconnected, dropped %lu samples\n", dropped);
+    void audioStreamTask(void *parameter)
+    {
+        auto *ownedClient = static_cast<WiFiClient *>(parameter);
+        WiFiClient client = *ownedClient;
+        delete ownedClient;
+        streamAudioPcm(client);
+        vTaskDelete(nullptr);
+    }
+}
+
+AudioStreamStartResult startAudioPcmStream(const WiFiClient &client)
+{
+    if (!micStartPcmStream())
+    {
+        return AudioStreamStartResult::Busy;
+    }
+
+    auto *ownedClient = new (std::nothrow) WiFiClient(client);
+    if (ownedClient == nullptr ||
+        xTaskCreate(audioStreamTask, "audio-stream", STREAM_TASK_STACK_BYTES,
+                    ownedClient, 1, nullptr) != pdPASS)
+    {
+        delete ownedClient;
+        micStopPcmStream();
+        return AudioStreamStartResult::ResourceFailure;
+    }
+    return AudioStreamStartResult::Started;
 }

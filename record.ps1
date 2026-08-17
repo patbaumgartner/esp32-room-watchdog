@@ -25,4 +25,3 @@ if (-not $token) {
     -i "http://${DeviceIp}/audio.pcm" `
     -c:a pcm_s16le $Output
 exit $LASTEXITCODE
-exit $LASTEXITCODE

@@ -3,7 +3,7 @@
 #include <Arduino.h>
 #include <PcmEncoder.h>
 
-#include <driver/adc.h>
+#include <esp_adc/adc_continuous.h>
 #include <esp_err.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
@@ -16,14 +16,12 @@
 
 namespace
 {
-    constexpr adc1_channel_t MIC_ADC_CHANNEL = ADC1_CHANNEL_0;
     constexpr size_t DMA_READ_BYTES = 2048;
     constexpr size_t DMA_STORE_BYTES = DMA_READ_BYTES * 4;
     constexpr size_t DMA_SAMPLES = DMA_READ_BYTES / SOC_ADC_DIGI_RESULT_BYTES;
     constexpr uint32_t WINDOW_SAMPLES =
         AUDIO_SAMPLE_RATE_HZ * SOUND_SAMPLE_WINDOW_MS / 1000;
 
-    static_assert(PIN_MIC_OUT == 0, "ADC channel mapping assumes GPIO0");
     static_assert(AUDIO_SAMPLE_RATE_HZ * SOUND_SAMPLE_WINDOW_MS % 1000 == 0,
                   "Sound window must contain a whole number of samples");
 
@@ -31,6 +29,8 @@ namespace
     QueueHandle_t windowQueue = nullptr;
     SemaphoreHandle_t pcmAvailable = nullptr;
     portMUX_TYPE stateMux = portMUX_INITIALIZER_UNLOCKED;
+    adc_continuous_handle_t adcHandle = nullptr;
+    adc_channel_t micAdcChannel = ADC_CHANNEL_0;
 
     alignas(4) uint8_t dmaBuffer[DMA_READ_BYTES];
     int16_t pcmBuffer[DMA_SAMPLES];
@@ -72,6 +72,7 @@ namespace
 
         if (added)
         {
+            // cppcheck-suppress cstyleCast
             xSemaphoreGive(pcmAvailable);
         }
     }
@@ -86,8 +87,8 @@ namespace
         while (true)
         {
             uint32_t bytesRead = 0;
-            const esp_err_t result = adc_digi_read_bytes(
-                dmaBuffer, sizeof(dmaBuffer), &bytesRead, 1000);
+            const esp_err_t result = adc_continuous_read(
+                adcHandle, dmaBuffer, sizeof(dmaBuffer), &bytesRead, 1000);
             if (result == ESP_ERR_TIMEOUT)
             {
                 continue;
@@ -110,7 +111,8 @@ namespace
             {
                 const auto *sample = reinterpret_cast<const adc_digi_output_data_t *>(
                     dmaBuffer + offset);
-                if (sample->type2.unit != 0 || sample->type2.channel != MIC_ADC_CHANNEL)
+                if (sample->type2.unit != ADC_UNIT_1 ||
+                    sample->type2.channel != micAdcChannel)
                 {
                     continue;
                 }
@@ -132,43 +134,47 @@ namespace
 
     bool configureAdc()
     {
-        const adc_digi_init_config_t initConfig = {
-            .max_store_buf_size = DMA_STORE_BYTES,
-            .conv_num_each_intr = DMA_READ_BYTES,
-            .adc1_chan_mask = 1U << MIC_ADC_CHANNEL,
-            .adc2_chan_mask = 0,
-        };
-        esp_err_t result = adc_digi_initialize(&initConfig);
+        adc_unit_t adcUnit = ADC_UNIT_1;
+        esp_err_t result = adc_continuous_io_to_channel(
+            PIN_MIC_OUT, &adcUnit, &micAdcChannel);
+        if (result != ESP_OK || adcUnit != ADC_UNIT_1)
+        {
+            Serial.printf("mic: GPIO%d is not an ADC1 channel\n", PIN_MIC_OUT);
+            return false;
+        }
+
+        adc_continuous_handle_cfg_t handleConfig = {};
+        handleConfig.max_store_buf_size = DMA_STORE_BYTES;
+        handleConfig.conv_frame_size = DMA_READ_BYTES;
+        result = adc_continuous_new_handle(&handleConfig, &adcHandle);
         if (result != ESP_OK)
         {
             Serial.printf("mic: ADC init failed: %s\n", esp_err_to_name(result));
             return false;
         }
 
-        adc_digi_pattern_config_t pattern = {
-            .atten = ADC_ATTEN_DB_12,
-            .channel = MIC_ADC_CHANNEL,
-            .unit = 0, // DMA pattern uses 0 for ADC1 and 1 for ADC2.
-            .bit_width = SOC_ADC_DIGI_MAX_BITWIDTH,
-        };
-        const adc_digi_configuration_t adcConfig = {
-            .conv_limit_en = false,
-            .conv_limit_num = 0,
-            .pattern_num = 1,
-            .adc_pattern = &pattern,
-            .sample_freq_hz = AUDIO_SAMPLE_RATE_HZ,
-            .conv_mode = ADC_CONV_SINGLE_UNIT_1,
-            .format = ADC_DIGI_OUTPUT_FORMAT_TYPE2,
-        };
-        result = adc_digi_controller_configure(&adcConfig);
+        adc_digi_pattern_config_t pattern = {};
+        pattern.atten = ADC_ATTEN_DB_12;
+        pattern.channel = micAdcChannel;
+        pattern.unit = adcUnit;
+        pattern.bit_width = SOC_ADC_DIGI_MAX_BITWIDTH;
+
+        adc_continuous_config_t adcConfig = {};
+        adcConfig.pattern_num = 1;
+        adcConfig.adc_pattern = &pattern;
+        adcConfig.sample_freq_hz = AUDIO_SAMPLE_RATE_HZ;
+        adcConfig.conv_mode = ADC_CONV_SINGLE_UNIT_1;
+        adcConfig.format = ADC_DIGI_OUTPUT_FORMAT_TYPE2;
+        result = adc_continuous_config(adcHandle, &adcConfig);
         if (result == ESP_OK)
         {
-            result = adc_digi_start();
+            result = adc_continuous_start(adcHandle);
         }
         if (result != ESP_OK)
         {
             Serial.printf("mic: ADC start failed: %s\n", esp_err_to_name(result));
-            adc_digi_deinitialize();
+            adc_continuous_deinit(adcHandle);
+            adcHandle = nullptr;
             return false;
         }
         return true;
@@ -191,8 +197,9 @@ bool micBegin()
     if (xTaskCreate(micAdcTask, "mic-adc", 4096, nullptr, 3, nullptr) != pdPASS)
     {
         Serial.println("mic: task allocation failed");
-        adc_digi_stop();
-        adc_digi_deinitialize();
+        adc_continuous_stop(adcHandle);
+        adc_continuous_deinit(adcHandle);
+        adcHandle = nullptr;
         return false;
     }
 
@@ -242,6 +249,7 @@ void micStopPcmStream()
     pcmStreaming = false;
     pcmCount = 0;
     portEXIT_CRITICAL(&stateMux);
+    // cppcheck-suppress cstyleCast
     xSemaphoreGive(pcmAvailable);
 }
 

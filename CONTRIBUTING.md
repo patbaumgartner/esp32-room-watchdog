@@ -25,10 +25,10 @@ are welcome.
   ./check.ps1        # Windows
   ```
 
-  Both run: native unit tests, cppcheck, and the firmware build. Manually that
-  is `pio test -e native`, `pio check -e esp32-c3-supermini` and
-  `pio run -e esp32-c3-supermini`. Always pass `-e` — the two environments
-  target incompatible platforms.
+  Both run native unit tests, cppcheck, and the firmware build. The scripts
+  also pin cppcheck through PlatformIO's package runner, so contributors and
+  CI use the same analyzer on Linux and Windows. Always pass `-e` to direct
+  PlatformIO commands — the two environments target incompatible platforms.
 
 - **Flash to hardware** (optional, needs a board):
 
