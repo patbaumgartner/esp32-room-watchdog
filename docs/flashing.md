@@ -4,9 +4,10 @@ This project uses [PlatformIO](https://platformio.org/) with the Arduino
 framework — it handles the toolchain, board definitions, and upload process
 without needing the full Arduino IDE.
 
-> **Shortcut:** on Windows, `./check.ps1` runs unit tests + build, and
-> `./deploy.ps1 [-Port COM3]` runs the checks and flashes the board. The steps
-> below are the manual equivalents.
+> **Shortcut:** `./check.sh` (or `./check.ps1` on Windows) runs the unit tests,
+> cppcheck and the firmware build; `./deploy.ps1 [-Port COM3]` runs the checks
+> and flashes the board from Windows. The steps below are the manual
+> equivalents.
 
 > First time on this machine? Do [`setup.md`](setup.md) first — it covers the
 > toolchain install, getting the serial port visible (including **WSL2 USB
@@ -59,7 +60,7 @@ use the chip's built-in USB, not a separate USB-serial chip.
 
 > **On WSL2 this list will be empty.** WSL cannot see USB devices plugged into
 > Windows until they are forwarded with `usbipd`, or you flash from the Windows
-> side instead — see [`setup.md`](setup.md#wsl2--this-machine).
+> side instead — see [`setup.md`](setup.md#wsl2).
 
 **Permission denied on the serial port?**
 ```bash
@@ -71,15 +72,18 @@ Then log out and back in (group membership needs a fresh session).
 
 ```bash
 cd esp32-room-watchdog
-pio run
+pio run -e esp32-c3-supermini
 ```
+
+The `-e` is not optional: the project also defines a `native` environment for
+the host-side unit tests, and the two target incompatible platforms.
 
 Or use the PlatformIO sidebar → **Build** (checkmark icon).
 
 ## 5. Upload (flash)
 
 ```bash
-pio run -t upload
+pio run -e esp32-c3-supermini -t upload
 ```
 
 Or PlatformIO sidebar → **Upload** (right-arrow icon).

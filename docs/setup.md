@@ -57,10 +57,10 @@ WSL2 does not see USB devices plugged into Windows. `/dev/ttyACM0` simply won't
 exist, no matter how the cable is wired. Pick one of these:
 
 **Option A — flash from Windows (simplest).** Install VS Code + PlatformIO on the
-Windows side and open the project there via the UNC path
-(`\\wsl$\Ubuntu\home\patbaumgartner\Synology\esp32-room-watchdog`), or keep a copy
-on the Windows filesystem. The board shows up as a `COM` port and everything just
-works. Editing stays possible from WSL.
+Windows side and open the project there via its UNC path
+(`\\wsl$\<distro>\<path-to-clone>`), or keep a copy on the Windows filesystem.
+The board shows up as a `COM` port and everything just works. Editing stays
+possible from WSL.
 
 **Option B — forward the USB device into WSL with [usbipd-win](https://github.com/dorssel/usbipd-win).**
 
@@ -100,20 +100,27 @@ WiFi credentials are kept out of git. `src/secrets.h` is gitignored:
 
 ```bash
 cp src/secrets.h.example src/secrets.h
-# edit src/secrets.h and fill in your SSID / password
+# edit src/secrets.h and fill in your SSID / password, the Gotify URL and
+# token, and a random API_TOKEN of at least 16 characters
 ```
 
 ## 4. Verify the setup
 
 ```bash
 cd esp32-room-watchdog
-pio system info      # PlatformIO + Python versions
-pio device list      # your board's port (see section 2 if empty)
-pio run              # compile only, no board needed
+pio system info                  # PlatformIO + Python versions
+pio device list                  # your board's port (see section 2 if empty)
+pio run -e esp32-c3-supermini    # compile only, no board needed
+pio test -e native               # host-side unit tests, no board needed
 ```
 
-`pio run` succeeding proves the toolchain is healthy even with no board attached.
-That's the cleanest way to separate "toolchain problem" from "USB problem".
+The `-e` is not optional: the firmware and the unit tests live in two
+environments that target incompatible platforms, so a bare `pio run` tries to
+compile the Arduino sources for your host and fails.
+
+A successful `pio run -e esp32-c3-supermini` proves the toolchain is healthy
+even with no board attached. That's the cleanest way to separate "toolchain
+problem" from "USB problem".
 
 ## What's already configured
 
@@ -121,6 +128,7 @@ From [`platformio.ini`](../platformio.ini):
 
 | Setting | Value | Meaning |
 |---|---|---|
+| `platform` | `espressif32@7.0.1` | Pinned so a build is reproducible and the bundled Arduino core does not change under you |
 | `board` | `lolin_c3_mini` | Closest match for the ESP32-C3 SuperMini |
 | `framework` | `arduino` | Arduino libraries, not the Arduino IDE |
 | `monitor_speed` | `115200` | Must match `Serial.begin()` in `main.cpp` |

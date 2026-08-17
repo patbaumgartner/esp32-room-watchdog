@@ -95,7 +95,7 @@ removes the MAX9814's DC bias, then maps the complete ADC range into signed
 16-bit little-endian PCM without clipping. When a client is recording, samples
 also enter a bounded 8192-sample ring buffer.
 
-`api.cpp` authenticates `POST /audio.pcm`, then `audio_stream.cpp` drains that
+`api.cpp` authenticates `GET /audio.pcm`, then `audio_stream.cpp` drains that
 ring buffer to the HTTP client. The API runs in a dedicated task, so network
 backpressure never blocks ADC sampling or the sensor loop. When the buffer
 fills, new stream samples are dropped and counted in `audioDroppedSamples`.
@@ -144,15 +144,24 @@ with the send/sequence logic in `radar.cpp`:
   BOOT button (hold ~1s) and `POST /calibrate`; both share the same entry
   point, which also pushes a "leave the room" warning via Gotify.
 
+  Every command goes through `sendFrame()`, which flushes the UART and waits
+  100ms — the module needs that gap to acknowledge before the next frame.
+
 ## HTTP API
 
-`api.cpp` runs a `WebServer` task on port 80. `GET /status` is read-only and
-unauthenticated; `POST /calibrate` and `POST /audio.pcm` require the
-an API token matching `API_TOKEN` from secrets.h. Headers are accepted, while
-the recorder uses a raw POST body for Arduino-ESP32 2.0 compatibility. The audio handler owns
-the API task while its client is connected, but ADC sampling, radar polling,
-notifications, and serial diagnostics continue in their own execution paths.
-All handlers reuse module accessors rather than owning sensor state.
+`api.cpp` runs a `WebServer` task on port 80. All three endpoints —
+`GET /status`, `POST /calibrate` and `GET /audio.pcm` — require `API_TOKEN`
+from secrets.h, supplied as `Authorization: Bearer` or `X-Api-Key`. The token
+is compared over its full length so a rejection time does not reveal how many
+leading bytes were right, and a token shorter than 16 characters fails the
+build. The audio handler owns the API task while its client is connected, but
+ADC sampling, radar polling, notifications, and serial diagnostics continue in
+their own execution paths. All handlers reuse module accessors rather than
+owning sensor state.
+
+The transport is plain HTTP, so the token and the audio both cross the LAN in
+the clear. [SECURITY.md](../SECURITY.md) states what that does and does not
+protect against.
 
 ## Extension points
 

@@ -17,11 +17,18 @@ are welcome.
 
 - **Run the quality gate before pushing:**
 
-  ```powershell
-  ./check.ps1        # native unit tests + firmware build
+  ```bash
+  ./check.sh         # Linux/macOS
   ```
 
-  or manually: `pio test -e native && pio run -e esp32-c3-supermini`
+  ```powershell
+  ./check.ps1        # Windows
+  ```
+
+  Both run: native unit tests, cppcheck, and the firmware build. Manually that
+  is `pio test -e native`, `pio check -e esp32-c3-supermini` and
+  `pio run -e esp32-c3-supermini`. Always pass `-e` — the two environments
+  target incompatible platforms.
 
 - **Flash to hardware** (optional, needs a board):
 
@@ -29,8 +36,12 @@ are welcome.
   ./deploy.ps1 [-Port COM3]
   ```
 
-CI runs the same checks on every push and pull request — a green local
-`check.ps1` means a green pipeline.
+  ```bash
+  pio run -e esp32-c3-supermini -t upload --upload-port /dev/ttyACM0
+  ```
+
+CI runs the same checks on every pull request — a green local gate means a
+green pipeline.
 
 ## Design rules
 
@@ -47,7 +58,8 @@ CI runs the same checks on every push and pull request — a green local
 - Keep PRs focused — one topic per PR.
 - Add or update unit tests for behavior changes in `lib/`.
 - Update the affected docs (`README.md`, `docs/`) when behavior or wiring
-  changes.
+  changes, and add a `CHANGELOG.md` entry for anything a user would notice —
+  especially changes to the HTTP API, `src/config.h` defaults, or wiring.
 - Describe how you tested (unit tests only, or verified on hardware).
 
 ## Reporting issues
@@ -57,3 +69,7 @@ Please include:
 - What you expected vs. what happened
 - Serial monitor output (`pio device monitor`, 115200 baud) if relevant
 - Your hardware variant (board, sensor modules) and wiring deviations, if any
+
+Never paste `API_TOKEN`, your Gotify token, or your WiFi password into an
+issue. Security problems go to [SECURITY.md](SECURITY.md) instead of a public
+issue.

@@ -31,14 +31,14 @@ The full kit was downloaded by hand into [`docs/datasheets/HLK-2412/`](datasheet
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------- |
 | [`HLK-LD2412 Human presence sensor module user manual V1.01.pdf`](<datasheets/HLK-2412/HLK-LD2412%20Human%20presence%20sensor%20module%20user%20manual%20V1.01.pdf>) | Pinout, electrical specs, mounting, config parameters | Yes — the reference for this doc               |
 | [`HLK-LD2412 Serial Communication Protocol.pdf`](<datasheets/HLK-2412/HLK-LD2412%20Serial%20Communication%20Protocol.pdf>)                                           | UART frame format and command set                     | Yes — needed for the UART1 driver              |
-| [`HLK-2412_Tool_install.exe`](datasheets/HLK-2412/HLK-2412_Tool_install.exe)                                                                                         | Windows installer for the visual config tool (~57MB)  | No                                              |
-| [`HLK-2412-uppper computer tool V1.04 (1).zip`](<datasheets/HLK-2412/HLK-2412-uppper%20computer%20tool%20V1.04%20%281%29.zip>)                                       | Same config tool, portable build (~57MB)              | No                                              |
-| [`serial port driver_ch341ser (2).zip`](<datasheets/HLK-2412/serial%20port%20driver_ch341ser%20%282%29.zip>)                                                         | CH341 USB-serial driver for the vendor's USB adapter  | No — we drive the module from the ESP32's UART |
-| [`App download link.doc`](<datasheets/HLK-2412/App%20download%20link.doc>)                                                                                           | Link sheet for the vendor's phone app                 | No                                              |
+| `HLK-2412_Tool_install.exe`                                                                                                                                           | Windows installer for the visual config tool (~57MB)  | No                                              |
+| `HLK-2412-uppper computer tool V1.04 (1).zip`                                                                                                                         | Same config tool, portable build (~57MB)              | No                                              |
+| `serial port driver_ch341ser (2).zip`                                                                                                                                 | CH341 USB-serial driver for the vendor's USB adapter  | No — we drive the module from the ESP32's UART |
+| `App download link.doc`                                                                                                                                               | Link sheet for the vendor's phone app                 | No                                              |
 
-> The two config-tool archives are ~57MB each (~112MB for the folder). They are
-> Windows-only and irrelevant to building or flashing this project — worth
-> excluding from version control if this tree ever gets committed.
+> Only the two PDFs are committed. The unlinked rows are ~112MB of Windows-only
+> vendor tooling that nothing here needs; `.gitignore` keeps them out. Fetch
+> them from the Google Drive folder above if you want the GUI config tool.
 
 ## ESP32-C3 SuperMini pinout reference
 

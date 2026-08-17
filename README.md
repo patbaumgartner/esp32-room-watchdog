@@ -23,8 +23,8 @@ third-party service in the loop.
 - **Radar tuning + calibration** — per-gate sensitivity applied at boot via
   the LD2412 command protocol; background calibration on demand (BOOT button
   or HTTP API) to cancel out static room clutter
-- **HTTP API** — `GET /status` live sensor JSON, `POST /calibrate` with an
-  API key to recalibrate remotely
+- **HTTP API** — token-authenticated `GET /status` live sensor JSON and
+  `POST /calibrate` to recalibrate remotely
 - **Push notifications** — JSON POST to a self-hosted [Gotify](https://gotify.net)
   server over HTTPS (TLS validated against the Let's Encrypt root); failed
   pushes back off and retry so events aren't lost
@@ -63,8 +63,15 @@ Full wiring, pin map, cable color legend, and datasheets: [docs/hardware.md](doc
    ./deploy.ps1 -Port COM5   # different port
    ```
 
-   Or use the PlatformIO sidebar / `pio run -t upload`. Details and
-   troubleshooting: [docs/flashing.md](docs/flashing.md)
+   On Linux or macOS:
+
+   ```bash
+   ./check.sh                                                  # tests + analysis + build
+   pio run -e esp32-c3-supermini -t upload --upload-port /dev/ttyACM0
+   ```
+
+   Or use the PlatformIO sidebar. Details and troubleshooting:
+   [docs/flashing.md](docs/flashing.md)
 
 ## Configuration
 
@@ -86,53 +93,68 @@ All tuning knobs live in [src/config.h](src/config.h):
 
 WiFi credentials, the Gotify server URL + app token (`GOTIFY_URL` /
 `GOTIFY_TOKEN`), and the HTTP API key (`API_TOKEN`) live in the gitignored
-`src/secrets.h`.
+`src/secrets.h`. `API_TOKEN` guards live occupancy and the microphone stream,
+so generate it randomly — the build rejects anything shorter than 16
+characters.
 
 ## HTTP API
 
-The node serves a small LAN API on port 80:
+The node serves a small LAN API on port 80. Every endpoint requires the token,
+supplied as `Authorization: Bearer <API_TOKEN>` or `X-Api-Key: <API_TOKEN>`;
+anything else gets a `401`.
 
-| Endpoint | Auth | Response |
-|---|---|---|
-| `GET /status` | none | Live JSON: sensor values, audio streaming/drop state, uptime |
-| `POST /calibrate` | Bearer token or raw `API_TOKEN` body | `202` — starts radar background calibration in 10s (~2 min; leave the room). `401` on a missing/wrong key |
-| `POST /audio.pcm` | Bearer token or raw `API_TOKEN` body | Continuous 48kHz signed 16-bit little-endian mono PCM stream |
+| Endpoint | Response |
+|---|---|
+| `GET /status` | Live JSON: sensor values, audio streaming/drop state, uptime |
+| `POST /calibrate` | `202` — starts radar background calibration in 10s (~2 min; leave the room) |
+| `GET /audio.pcm` | Continuous 48kHz signed 16-bit little-endian mono PCM stream |
 
-```powershell
-Invoke-RestMethod http://<device-ip>/status
-Invoke-RestMethod -Method Post -Uri http://<device-ip>/calibrate -Headers @{ Authorization = 'Bearer <API_TOKEN>' }
+```bash
+curl -H "Authorization: Bearer $WATCHDOG_API_TOKEN" http://<device-ip>/status
+curl -X POST -H "Authorization: Bearer $WATCHDOG_API_TOKEN" http://<device-ip>/calibrate
 ```
+
+The traffic is plain HTTP: keep the device on a trusted LAN and never
+port-forward it. See [SECURITY.md](SECURITY.md) for the full threat model.
 
 Calibration can also be triggered on the device by holding the BOOT button
 for ~1s. The result is persisted in the radar module's flash.
 
 ## Audio recording
 
-The node serves one lossless raw PCM stream at
-`http://<device-ip>/audio.pcm`. It is signed 16-bit little-endian mono at
-48kHz and requires the same token used by the calibration endpoint. The
-recording script sends it in the POST body for compatibility with the
-Arduino-ESP32 2.0 WebServer request parser.
-Install [FFmpeg](https://ffmpeg.org/), then record until you press Ctrl+C:
+The node serves one lossless raw PCM stream at `GET /audio.pcm`, signed 16-bit
+little-endian mono at 48kHz. Install [FFmpeg](https://ffmpeg.org/), then
+record until you press Ctrl+C:
+
+```bash
+export WATCHDOG_API_TOKEN='<API_TOKEN>'   # omit to be prompted
+./record.sh 192.168.1.42
+./record.sh 192.168.1.42 room.wav
+```
 
 ```powershell
-./record.ps1 -DeviceIp 192.168.1.42 -ApiToken '<API_TOKEN>'
-./record.ps1 -DeviceIp 192.168.1.42 -ApiToken '<API_TOKEN>' -Output room.wav
+$env:WATCHDOG_API_TOKEN = '<API_TOKEN>'
+./record.ps1 -DeviceIp 192.168.1.42
+./record.ps1 -DeviceIp 192.168.1.42 -Output room.wav
 ```
 
 The ESP32 stores no recording. `GET /status` exposes `audioStreaming` and
 `audioDroppedSamples`; the latter should remain zero. A nonzero value means
 the receiving computer or WiFi could not drain the 170ms buffer in time.
-Only one recording client is supported, and the API should remain LAN-only.
+Only one recording client is supported.
 
 ## Development
 
-```powershell
-./check.ps1                    # run unit tests + build firmware
-./deploy.ps1                   # check + flash to the board
-pio test -e native             # unit tests only
-pio device monitor             # serial log @ 115200 baud
+```bash
+./check.sh                       # unit tests + cppcheck + firmware build
+pio test -e native               # unit tests only
+pio check -e esp32-c3-supermini  # static analysis only
+pio run -e esp32-c3-supermini    # build only
+pio device monitor               # serial log @ 115200 baud
 ```
+
+Windows equivalents: `./check.ps1` and `./deploy.ps1` (check + flash). The two
+PlatformIO environments target incompatible platforms, so always pass `-e`.
 
 ### Architecture
 
@@ -156,10 +178,10 @@ esp32-room-watchdog/
 │   ├── main.cpp              #   setup/loop composition only
 │   ├── config.h              #   pins + tuning constants
 │   ├── mic.cpp / .h          #   ADC DMA, level windows + PCM ring buffer
-│   ├── audio_stream.cpp / .h #   PCM response writer for POST /audio.pcm
+│   ├── audio_stream.cpp / .h #   PCM response writer for GET /audio.pcm
 │   ├── radar.cpp / .h        #   UART parsing, tuning, calibration
 │   ├── notifications.cpp / .h#   detector events → push messages
-│   ├── api.cpp / .h          #   HTTP API (/status, /calibrate)
+│   ├── api.cpp / .h          #   HTTP API (authentication + handlers)
 │   ├── calibration_button.cpp#   BOOT button → calibration
 │   ├── status_log.cpp / .h   #   1Hz serial diagnostics
 │   ├── net.cpp / net.h       #   WiFi connect + Gotify push (TLS)
@@ -167,13 +189,15 @@ esp32-room-watchdog/
 │   └── secrets.h.example     #   template for credentials (gitignored copy)
 ├── test/                     # native Unity tests for lib/
 ├── docs/                     # hardware, setup, flashing, architecture
-├── .github/workflows/ci.yml  # CI: unit tests + firmware build on every push
-├── check.ps1                 # local quality gate
+├── .github/workflows/ci.yml  # tests + cppcheck + firmware build
+├── check.sh / check.ps1      # local quality gate
+├── record.sh / record.ps1    # record the live audio stream to WAV
 └── deploy.ps1                # check + flash
 ```
 
-CI runs on every push/PR: native unit tests plus a full firmware build
-(actions pinned to commit SHAs, kept current by Dependabot).
+CI runs on pushes to `main`, on pull requests, and weekly: native unit tests,
+cppcheck, and a full firmware build, with `firmware.bin` kept as an artifact.
+Actions are pinned to commit SHAs and kept current by Dependabot.
 
 ## Status
 
@@ -191,6 +215,8 @@ CI runs on every push/PR: native unit tests plus a full firmware build
 ## Contributing
 
 Issues and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+User-visible changes are recorded in [CHANGELOG.md](CHANGELOG.md); security
+reports go through [SECURITY.md](SECURITY.md).
 
 ## License
 
