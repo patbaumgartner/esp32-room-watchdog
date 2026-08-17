@@ -39,6 +39,7 @@ namespace
         int16_t micMin;
         int16_t micMax;
         uint32_t audioDroppedSamples;
+        uint32_t pushLost;
         uint8_t audioStreaming;
         uint8_t pushBackingOff;
     };
@@ -57,6 +58,7 @@ namespace
         snapshot.micMin = static_cast<int16_t>(mic.minLevel());
         snapshot.micMax = static_cast<int16_t>(mic.maxLevel());
         snapshot.audioDroppedSamples = micDroppedSamples();
+        snapshot.pushLost = pushLostCount();
         snapshot.audioStreaming = micPcmStreaming() ? 1 : 0;
         snapshot.pushBackingOff = pushBackingOff() ? 1 : 0;
         return snapshot;
@@ -79,6 +81,7 @@ namespace
         json += ",\"audioStreaming\":" + String(snapshot.audioStreaming ? "true" : "false");
         json += ",\"audioDroppedSamples\":" + String(snapshot.audioDroppedSamples);
         json += ",\"pushBackingOff\":" + String(snapshot.pushBackingOff ? "true" : "false");
+        json += ",\"pushLost\":" + String(snapshot.pushLost);
         json += ",\"uptimeMs\":" + String(nowMs);
         json += "}";
         return json;

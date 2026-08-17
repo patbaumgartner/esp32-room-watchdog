@@ -24,6 +24,8 @@ releases yet — flash `main`. Format follows
   socket's send policy and the push queue are pure logic with native tests,
   like the rest of the decision layer. 17 new test cases.
 - `GET /status` reports `telemetryClient`, `pushBackingOff` and `pushLost`.
+  The telemetry socket reports the same push health, so a client watching the
+  socket also sees when an alert was lost rather than only delayed.
 - `TRUST_PROXY_HEADERS` logs the `X-Forwarded-For` client when the node sits
   behind a reverse proxy. Logging only; never used for authentication.
 - `SECURITY.md` documents the reverse-proxy setup for reaching the node over
