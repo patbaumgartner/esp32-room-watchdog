@@ -1,5 +1,6 @@
-# Local "deploy" alias: run checks, then flash the firmware to the board.
+# Local "deploy" alias: run the quality gate, then flash the firmware.
 # Usage: ./deploy.ps1 [-Port COM3] [-SkipChecks]
+# The gate is check.sh / check.ps1 so this cannot drift from CI.
 param(
     [string]$Port = 'COM3',
     [switch]$SkipChecks
@@ -16,12 +17,13 @@ if ($wslPath.Success) {
     $linuxPio = '~/.platformio/penv/bin/platformio'
 
     if (-not $SkipChecks) {
-        & wsl.exe --distribution $distribution --cd $linuxProject $linuxPio test -e native
+        & wsl.exe --distribution $distribution --cd $linuxProject ./check.sh
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
-
-    & wsl.exe --distribution $distribution --cd $linuxProject $linuxPio run -e esp32-c3-supermini
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    else {
+        & wsl.exe --distribution $distribution --cd $linuxProject $linuxPio run -e esp32-c3-supermini
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
 
     $python = Join-Path $env:USERPROFILE '.platformio\penv\Scripts\python.exe'
     $esptool = Join-Path $env:USERPROFILE '.platformio\packages\tool-esptoolpy\esptool.py'
@@ -52,7 +54,7 @@ if ($wslPath.Success) {
 }
 
 if (-not $SkipChecks) {
-    & $pio test -e native
+    & (Join-Path $PSScriptRoot 'check.ps1')
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 

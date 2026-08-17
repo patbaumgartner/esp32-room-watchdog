@@ -45,6 +45,17 @@ void test_basic_params_matches_datasheet_example()
                 Ld2412Commands::basicParams(out, 1, 12, 5, 0));
 }
 
+void test_basic_params_encodes_unmanned_seconds_little_endian()
+{
+    // 300s = 0x012C: low byte first. Also checks polarity is passed through.
+    const uint8_t expected[] = {0xFD, 0xFC, 0xFB, 0xFA, 0x07, 0x00,
+                                0x02, 0x00, 0x01, 0x08, 0x2C, 0x01, 0x01,
+                                0x04, 0x03, 0x02, 0x01};
+    uint8_t out[Ld2412Commands::MAX_FRAME];
+    assertFrame(expected, sizeof(expected), out,
+                Ld2412Commands::basicParams(out, 1, 8, 300, 1));
+}
+
 void test_motion_sensitivity_matches_datasheet_example()
 {
     const uint8_t gates[14] = {0x00, 0x23, 0x23, 0x23, 0x19, 0x19, 0x19,
@@ -84,6 +95,7 @@ int main()
     RUN_TEST(test_enable_config_matches_datasheet_example);
     RUN_TEST(test_end_config_matches_datasheet_example);
     RUN_TEST(test_basic_params_matches_datasheet_example);
+    RUN_TEST(test_basic_params_encodes_unmanned_seconds_little_endian);
     RUN_TEST(test_motion_sensitivity_matches_datasheet_example);
     RUN_TEST(test_static_sensitivity_uses_command_word_0004);
     RUN_TEST(test_background_correction_matches_datasheet_example);

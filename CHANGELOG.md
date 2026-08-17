@@ -40,6 +40,8 @@ releases yet — flash `main`. Format follows
 
 - API tokens are compared over their full length instead of stopping at the
   first differing byte, and a rejection no longer logs the expected length.
+- `deploy.ps1` runs the same gate as CI. It only ran the unit tests, so it
+  could flash a build that had never been through cppcheck.
 - `409 Conflict` from `GET /audio.pcm` is now JSON like every other error.
 - A Gotify push now has explicit connect and read timeouts, so an unreachable
   server cannot stall presence and sound detection.
