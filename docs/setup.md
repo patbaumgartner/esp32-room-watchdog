@@ -28,8 +28,9 @@ The first build downloads the pinned pioarduino ESP32 platform and the RISC-V
 toolchain (several hundred MB). It needs internet once; after that it works
 offline.
 
-This project declares no `lib_deps`, so there are no third-party libraries to
-install.
+The two `lib_deps` in `platformio.ini` — `ESP32Async/AsyncTCP` and
+`ESP32Async/ESPAsyncWebServer` — are fetched automatically on that first build
+and pinned to exact versions, so no manual library install is needed.
 
 ## 2. Make the board visible
 
