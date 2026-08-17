@@ -1,0 +1,9 @@
+# Normalize text files in the repository; check them out with the line endings
+# each toolchain expects.
+* text=auto eol=lf
+
+*.ps1 text eol=crlf
+*.sh  text eol=lf
+
+*.pdf binary
+*.bin binary
