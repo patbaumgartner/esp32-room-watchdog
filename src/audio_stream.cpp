@@ -2,80 +2,68 @@
 
 #include <Arduino.h>
 
-#include <new>
-
 #include "config.h"
 #include "mic.h"
 
 namespace
 {
-    constexpr size_t NETWORK_CHUNK_SAMPLES = 1024;
-    constexpr uint32_t STREAM_TASK_STACK_BYTES = 6144;
+    // ffmpeg needs the format up front; the body is headerless raw PCM.
+    const char *const PCM_CONTENT_TYPE = "audio/x-raw";
 
-    void streamAudioPcm(WiFiClient client)
+    size_t fillPcm(uint8_t *buffer, size_t maxLen, size_t)
     {
-        client.setNoDelay(true);
-        client.println("HTTP/1.0 200 OK");
-        client.printf("Content-Type: audio/x-raw; format=S16LE; rate=%lu; channels=1\r\n",
-                      AUDIO_SAMPLE_RATE_HZ);
-        client.println("Cache-Control: no-store");
-        client.println("Connection: close");
-        client.println();
-
-        Serial.printf("audio: client %s connected\n", client.remoteIP().toString().c_str());
-        int16_t samples[NETWORK_CHUNK_SAMPLES];
-        while (client.connected() && WiFi.status() == WL_CONNECTED)
+        if (!micPcmStreaming())
         {
-            const size_t sampleCount = micReadPcm(samples, NETWORK_CHUNK_SAMPLES);
-            const uint8_t *bytes = reinterpret_cast<const uint8_t *>(samples);
-            const size_t byteCount = sampleCount * sizeof(int16_t);
-            size_t sent = 0;
-            while (sent < byteCount && client.connected())
-            {
-                const size_t written = client.write(bytes + sent, byteCount - sent);
-                if (written == 0)
-                {
-                    break;
-                }
-                sent += written;
-            }
-            if (sent < byteCount)
-            {
-                break;
-            }
+            return 0; // terminating chunk: the recording was stopped
         }
+        const size_t written = micTryReadPcm(buffer, maxLen);
 
-        const uint32_t dropped = micDroppedSamples();
-        micStopPcmStream();
-        client.stop();
-        Serial.printf("audio: client disconnected, dropped %lu samples\n", dropped);
-    }
-
-    void audioStreamTask(void *parameter)
-    {
-        auto *ownedClient = static_cast<WiFiClient *>(parameter);
-        WiFiClient client = *ownedClient;
-        delete ownedClient;
-        streamAudioPcm(client);
-        vTaskDelete(nullptr);
+        // 0 would end the stream, so distinguish "nothing yet" from "done".
+        return written > 0 ? written : RESPONSE_TRY_AGAIN;
     }
 }
 
-AudioStreamStartResult startAudioPcmStream(const WiFiClient &client)
+void audioStreamAttach(AsyncWebServer &server, AsyncMiddleware &authentication)
 {
-    if (!micStartPcmStream())
-    {
-        return AudioStreamStartResult::Busy;
-    }
+    server
+        .on("/audio.pcm", HTTP_GET,
+            [](AsyncWebServerRequest *request)
+            {
+                if (!micStartPcmStream())
+                {
+                    request->send(409, "application/json",
+                                  "{\"error\":\"an audio stream is already active\"}");
+                    return;
+                }
 
-    auto *ownedClient = new (std::nothrow) WiFiClient(client);
-    if (ownedClient == nullptr ||
-        xTaskCreate(audioStreamTask, "audio-stream", STREAM_TASK_STACK_BYTES,
-                    ownedClient, 1, nullptr) != pdPASS)
-    {
-        delete ownedClient;
-        micStopPcmStream();
-        return AudioStreamStartResult::ResourceFailure;
-    }
-    return AudioStreamStartResult::Started;
+                AsyncWebServerResponse *response =
+                    request->beginChunkedResponse(PCM_CONTENT_TYPE, fillPcm);
+                if (response == nullptr)
+                {
+                    micStopPcmStream();
+                    request->send(503, "application/json",
+                                  "{\"error\":\"audio stream could not be started\"}");
+                    return;
+                }
+
+                response->addHeader("Cache-Control", "no-store");
+                response->addHeader("X-Audio-Format", "s16le");
+                response->addHeader("X-Audio-Sample-Rate", String(AUDIO_SAMPLE_RATE_HZ));
+                response->addHeader("X-Audio-Channels", "1");
+
+                // Fires on a client drop and on normal completion alike, so the
+                // single-recording slot cannot leak.
+                request->onDisconnect(
+                    []()
+                    {
+                        Serial.printf("audio: client disconnected, dropped %lu samples\n",
+                                      micDroppedSamples());
+                        micStopPcmStream();
+                    });
+
+                Serial.printf("audio: client %s connected\n",
+                              request->client()->remoteIP().toString().c_str());
+                request->send(response);
+            })
+        .addMiddleware(&authentication);
 }

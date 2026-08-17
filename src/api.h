@@ -2,8 +2,8 @@
 
 #include <Arduino.h>
 
-// Starts the LAN API: async REST + WebSocket on API_PORT, and the
-// synchronous PCM stream server on AUDIO_PORT.
+// Starts the LAN API: REST, the telemetry WebSocket and the PCM stream, all
+// served asynchronously on API_PORT.
 void apiBegin();
 
 // Constant-time check of one Authorization or X-Api-Key header value, with an

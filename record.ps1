@@ -1,17 +1,13 @@
 [CmdletBinding()]
 param(
-    # Host of the node, optionally with a port. The PCM stream lives on 81;
-    # pass a full host:port when going through a reverse proxy.
-    [string]$Device = 'watchdog.local:81',
+    # Host of the node, optionally with a port. Pass host:port when going
+    # through a reverse proxy on a non-default port.
+    [string]$Device = 'watchdog.local',
 
     [string]$Output = "room-watchdog-$(Get-Date -Format 'yyyyMMdd-HHmmss').wav"
 )
 
 $ErrorActionPreference = 'Stop'
-
-if ($Device -notmatch ':') {
-    $Device = "${Device}:81"
-}
 
 if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
     throw 'ffmpeg is required and was not found on PATH.'

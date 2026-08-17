@@ -97,7 +97,7 @@ namespace
         String json = "{\"type\":\"hello\"";
         json += ",\"host\":\"" + String(MDNS_HOSTNAME) + ".local\"";
         json += ",\"audioSampleRate\":" + String(AUDIO_SAMPLE_RATE_HZ);
-        json += ",\"audioPort\":" + String(AUDIO_PORT);
+        json += ",\"audioPath\":\"/audio.pcm\"";
         json += ",\"heartbeatMs\":" + String(WS_HEARTBEAT_MS);
         json += ",\"minGate\":" + String(RADAR_MIN_GATE);
         json += ",\"maxGate\":" + String(RADAR_MAX_GATE);

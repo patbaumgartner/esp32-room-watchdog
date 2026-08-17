@@ -4,7 +4,7 @@
 
 #include <ApiToken.h>
 
-#include "audio_api.h"
+#include "audio_stream.h"
 #include "config.h"
 #include "mic.h"
 #include "net.h"
@@ -116,12 +116,11 @@ void apiBegin()
         .addMiddleware(&requireToken);
 
     wsAttach(server, requireToken);
+    audioStreamAttach(server, requireToken);
 
     server.onNotFound([](AsyncWebServerRequest *request)
                       { request->send(404, "application/json", "{\"error\":\"not found\"}"); });
     server.begin();
-    audioApiBegin();
 
-    Serial.printf("api: port %u (/status, /calibrate, /ws), port %u (/audio.pcm)\n",
-                  API_PORT, AUDIO_PORT);
+    Serial.printf("api: port %u (/status, /calibrate, /ws, /audio.pcm)\n", API_PORT);
 }

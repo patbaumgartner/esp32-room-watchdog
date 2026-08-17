@@ -39,13 +39,21 @@ releases yet — flash `main`. Format follows
 
 ### Changed
 
-- **Breaking — `GET /audio.pcm` moved to port 81.** The REST API and WebSocket
-  are now served by `ESPAsyncWebServer` on port 80, but a recording holds its
-  socket for minutes, which an async handler must never do. It keeps the
-  synchronous server on its own port. `record.sh` and `record.ps1` follow
-  automatically; a reverse proxy needs a second route.
+- **Breaking — the LAN API moved to `ESPAsyncWebServer`.** `GET /status`,
+  `POST /calibrate`, the new `/ws` telemetry socket and `GET /audio.pcm` are
+  all served asynchronously from one server on port 80. The PCM stream is a
+  chunked response drained by an ack-driven callback, so no request holds a
+  task for the length of a recording and a reverse proxy needs a single route.
 - **Breaking — `record.ps1 -DeviceIp` is now `-Device`,** and both recorders
-  default to `watchdog.local:81` instead of requiring an IP.
+  default to `watchdog.local` instead of requiring an IP.
+- `AUDIO_STREAM_BUFFER_SAMPLES` grew from 8192 (~170ms) to 32768 (~680ms).
+  Draining is now driven by TCP acks rather than a task that can block, and
+  lwIP's fallback poll timer only fires every 500ms — the buffer is sized to
+  ride out one of those without dropping a sample.
+- `micReadPcm()` became `micTryReadPcm()`: non-blocking and byte-oriented, so
+  it can be called from an AsyncTCP callback and write straight into a network
+  buffer that `int16_t` may not be aligned to. Its wake-up semaphore is gone
+  with the task that needed it.
 - **Breaking — movement updates no longer reach Gotify.** "Person moved to X"
   is a live event on the WebSocket only. The socket streams position
   continuously, so pushing the same thing to a phone was noise. Presence,

@@ -112,20 +112,17 @@ The node answers at `watchdog.local` (mDNS) as well as at its IP. Every
 endpoint requires the token, supplied as `Authorization: Bearer <API_TOKEN>`
 or `X-Api-Key: <API_TOKEN>`; anything else gets a `401`.
 
-| Endpoint | Port | Response |
-|---|---|---|
-| `GET /status` | 80 | Live JSON: sensor values, audio and push health, uptime |
-| `POST /calibrate` | 80 | `202` — starts radar background calibration in 10s (~2 min; leave the room) |
-| `GET /ws` | 80 | WebSocket: live telemetry and events (see below) |
-| `GET /audio.pcm` | 81 | Continuous 48kHz signed 16-bit little-endian mono PCM stream |
+| Endpoint | Response |
+|---|---|
+| `GET /status` | Live JSON: sensor values, audio and push health, uptime |
+| `POST /calibrate` | `202` — starts radar background calibration in 10s (~2 min; leave the room) |
+| `GET /ws` | WebSocket: live telemetry and events (see below) |
+| `GET /audio.pcm` | Continuous 48kHz signed 16-bit little-endian mono PCM stream |
 
 ```bash
 curl -H "Authorization: Bearer $WATCHDOG_API_TOKEN" http://watchdog.local/status
 curl -X POST -H "Authorization: Bearer $WATCHDOG_API_TOKEN" http://watchdog.local/calibrate
 ```
-
-The PCM stream keeps its own port because it holds its socket for the whole
-recording — the one thing an async handler must never do.
 
 The traffic is plain HTTP: keep the device on a trusted LAN and never
 port-forward it. To reach it from outside, put a TLS-terminating reverse proxy
@@ -168,7 +165,7 @@ Server messages are JSON with a `type` field:
 
 | `type` | When | Payload |
 |---|---|---|
-| `hello` | Once, on connect | Host name, audio sample rate and port, heartbeat interval, radar gate range |
+| `hello` | Once, on connect | Host name, audio sample rate and path, heartbeat interval, radar gate range |
 | `telemetry` | On change, and at least every `WS_HEARTBEAT_MS` | Presence, target state, distances, energies, mic levels, audio and push health, uptime |
 | `event` | On a detector edge | `event` (`boot`, `presence`, `cleared`, `moved`, `sound`, `calibration`) and the same human-readable `message` Gotify would show |
 
@@ -183,13 +180,13 @@ would be worse.
 
 ## Audio recording
 
-The node serves one lossless raw PCM stream at `GET /audio.pcm` on port 81,
-signed 16-bit little-endian mono at 48kHz. Install
-[FFmpeg](https://ffmpeg.org/), then record until you press Ctrl+C:
+The node serves one lossless raw PCM stream at `GET /audio.pcm`, signed 16-bit
+little-endian mono at 48kHz. Install [FFmpeg](https://ffmpeg.org/), then record
+until you press Ctrl+C:
 
 ```bash
 export WATCHDOG_API_TOKEN='<API_TOKEN>'   # omit to be prompted
-./record.sh                          # defaults to watchdog.local:81
+./record.sh                          # defaults to watchdog.local
 ./record.sh 192.168.1.42 room.wav
 ```
 
@@ -246,8 +243,7 @@ esp32-room-watchdog/
 │   ├── main.cpp              #   setup/loop composition only
 │   ├── config.h              #   pins + tuning constants
 │   ├── mic.cpp / .h          #   ADC DMA, level windows + PCM ring buffer
-│   ├── audio_stream.cpp / .h #   PCM response writer
-│   ├── audio_api.cpp / .h    #   synchronous server for GET /audio.pcm
+│   ├── audio_stream.cpp / .h #   chunked async response for GET /audio.pcm
 │   ├── radar.cpp / .h        #   UART parsing, tuning, calibration
 │   ├── notifications.cpp / .h#   detector events → alert vs live routing
 │   ├── api.cpp / .h          #   async REST API (authentication + handlers)

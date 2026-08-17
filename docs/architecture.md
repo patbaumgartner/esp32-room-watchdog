@@ -24,11 +24,10 @@ flowchart LR
     subgraph src [src/ — glue, runs on ESP32]
         LOOP[main.cpp<br/>composition only]
         MICG[mic.cpp<br/>48kHz ADC DMA]
-        AUDIO[audio_stream.cpp<br/>PCM response writer]
-        AAPI[audio_api.cpp<br/>sync server, port 81]
+        AUDIO[audio_stream.cpp<br/>chunked PCM response]
         RADG[radar.cpp<br/>UART parsing + tuning]
         NOTIF[notifications.cpp<br/>events → alert vs live]
-        API[api.cpp<br/>async REST, port 80]
+        API[api.cpp<br/>async server, port 80]
         WSG[ws.cpp<br/>telemetry socket]
         CBTN[calibration_button.cpp<br/>hold → calibrate]
         SLOG[status_log.cpp<br/>serial diagnostics]
@@ -50,8 +49,6 @@ flowchart LR
 
     MIC -->|ADC1 DMA| MICG --> LW
     MICG --> PCM --> AUDIO -->|HTTP/TCP| RECORDER[FFmpeg recorder]
-    AAPI --> AUDIO
-    AAPI --> AT
     RADAR -->|digitalRead + UART| RADG --> LP
     RADG --> LC
     BTN --> CBTN
@@ -61,7 +58,7 @@ flowchart LR
     LOOP --> API
     LOOP --> WSG
     API --> AT
-    API --> AAPI
+    API --> AUDIO
     API --> WSG
     WSG --> TG
     LOOP --> CBTN
@@ -138,16 +135,20 @@ than by resetting the gate from the callback.
 
 ## Ports
 
-| Port | Server | Why |
-|---|---|---|
-| 80 | `AsyncWebServer` | `/status`, `/calibrate`, `/ws` — many short requests plus one long-lived socket |
-| 81 | `WebServer` (sync) | `/audio.pcm` — holds its socket for the whole recording in a dedicated task |
+One `AsyncWebServer` on port 80 carries everything: `/status`, `/calibrate`,
+the `/ws` telemetry socket and the `/audio.pcm` stream.
 
-The PCM stream cannot move to the async server without rewriting it as a
-chunked response whose filler never blocks; `micReadPcm()` blocks by design.
-Keeping it synchronous on its own port isolates that from the migration.
-WebServer.h and ESPAsyncWebServer.h also both define `HTTP_GET`, so the two
-live in separate translation units.
+The PCM stream is an HTTP chunked response. Its filler runs on the AsyncTCP
+task, so it must never wait: when the ring buffer is momentarily empty it
+returns `RESPONSE_TRY_AGAIN` instead of blocking, and the library calls it
+again. What keeps that moving is the TCP ack clock — the filler only reports
+"empty" *after* it has just handed over data, so a segment is always in flight
+whose acknowledgement drives the next call, by which time the ADC has produced
+more samples.
+
+lwIP's poll timer is the fallback if a connection ever does go fully idle, and
+it only fires every 500ms (`TCP_SLOW_INTERVAL`). `AUDIO_STREAM_BUFFER_SAMPLES`
+is sized to ride out one of those without dropping a sample.
 
 ## Audio pipeline
 
@@ -157,12 +158,11 @@ removes the MAX9814's DC bias, then maps the complete ADC range into signed
 16-bit little-endian PCM without clipping. When a client is recording, samples
 also enter a bounded 8192-sample ring buffer.
 
-`api.cpp` authenticates the request on port 80; `audio_api.cpp` authenticates
-`GET /audio.pcm` on port 81 and `audio_stream.cpp` drains the ring buffer to
-the HTTP client from a dedicated task, so network backpressure never blocks
-ADC sampling or the sensor loop. When the buffer fills, new stream samples are
-dropped and counted in `audioDroppedSamples`. Sound detection still uses every
-ADC sample regardless of stream state.
+`api.cpp` authenticates the request and `audio_stream.cpp` streams the ring
+buffer to the client as a chunked response, so network backpressure never
+blocks ADC sampling or the sensor loop. When the buffer fills, new stream
+samples are dropped and counted in `audioDroppedSamples`. Sound detection
+still uses every ADC sample regardless of stream state.
 
 ## Delivery semantics
 
@@ -253,18 +253,16 @@ with the send/sequence logic in `radar.cpp`:
 
 ## HTTP API
 
-`api.cpp` runs an `AsyncWebServer` on port 80 serving `GET /status`,
-`POST /calibrate` and the `/ws` telemetry socket; `audio_api.cpp` runs a
-synchronous `WebServer` task on port 81 serving `GET /audio.pcm`. Every
+`api.cpp` runs a single `AsyncWebServer` on port 80 serving `GET /status`,
+`POST /calibrate`, the `/ws` telemetry socket and `GET /audio.pcm`. Every
 endpoint requires `API_TOKEN` from secrets.h, supplied as
 `Authorization: Bearer` or `X-Api-Key`, and a token shorter than 16 characters
 fails the build. All handlers reuse module accessors rather than owning sensor
 state.
 
-A recording owns the audio task while its client is connected, but ADC
-sampling, radar polling, notifications, and serial diagnostics continue in
-their own execution paths — and the async server on port 80 stays responsive
-throughout, which it did not when both shared one synchronous task.
+Nothing in the server blocks: a recording is drained by an ack-driven callback
+rather than a task holding the socket, so ADC sampling, radar polling,
+notifications and the telemetry socket all stay responsive while it runs.
 
 The transport is plain HTTP and plain WebSocket, so the token, the telemetry
 and the audio all cross the LAN in the clear. The device terminates no TLS; a
