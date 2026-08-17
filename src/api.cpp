@@ -50,9 +50,7 @@ namespace
         {
             return false;
         }
-        Serial.printf("api: %s %s rejected, no valid API token\n",
-                      server.method() == HTTP_GET ? "GET" : "POST",
-                      server.uri().c_str());
+        Serial.printf("api: %s rejected, no valid API token\n", server.uri().c_str());
         server.sendHeader("WWW-Authenticate", "Bearer");
         server.send(401, "application/json", "{\"error\":\"missing or wrong API token\"}");
         return true;

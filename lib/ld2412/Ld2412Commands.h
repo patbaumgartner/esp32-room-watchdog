@@ -56,9 +56,9 @@ public:
     }
 
 private:
-    // Callers pass a uint8_t[MAX_FRAME]; frame() writes header(4) + length(2) +
-    // command word(2) + value + footer(4), and the gate arrays are the longest
-    // value we send.
+    // Callers pass a uint8_t[MAX_FRAME]. A frame is 12 bytes of envelope
+    // (header, length, command word, footer) plus the value, and the gate
+    // arrays are the longest value we send.
     static_assert(12 + GATE_COUNT <= MAX_FRAME, "MAX_FRAME is too small for a gate command");
 
     static size_t frame(uint8_t *out, uint16_t cmdWord, const uint8_t *value, size_t valueLen)
