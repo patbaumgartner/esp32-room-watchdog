@@ -191,8 +191,9 @@ WebSocket only:
   absent client.
 - **Send on change, not on schedule.** A frame goes out only when the sensor
   values differ from the last delivered one and `WS_MIN_PUSH_INTERVAL_MS` has
-  passed. Change detection hashes the raw values, not the rendered JSON, so a
-  ticking `uptimeMs` never counts as a change.
+  passed. The fingerprint covers every field in the frame except `uptimeMs`,
+  so a ticking clock never counts as a change but a rising
+  `audioDroppedSamples` does.
 - **A heartbeat every `WS_HEARTBEAT_MS`** goes out regardless, so a client can
   distinguish a still room from a dead link.
 
