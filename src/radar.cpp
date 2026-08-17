@@ -8,12 +8,17 @@ namespace
 {
     Ld2412Parser parser;
 
+    void sendFrame(const uint8_t *frame, size_t length)
+    {
+        Serial1.write(frame, length);
+        Serial1.flush();
+        delay(100); // module needs a moment to ACK before the next command
+    }
+
     void sendCommand(size_t (*build)(uint8_t *))
     {
         uint8_t frame[Ld2412Commands::MAX_FRAME];
-        Serial1.write(frame, build(frame));
-        Serial1.flush();
-        delay(100); // module needs a moment to ACK before the next command
+        sendFrame(frame, build(frame));
     }
 }
 
@@ -27,16 +32,10 @@ void radarApplyTuning()
 {
     uint8_t frame[Ld2412Commands::MAX_FRAME];
     sendCommand(Ld2412Commands::enableConfig);
-    Serial1.write(frame, Ld2412Commands::basicParams(frame, RADAR_MIN_GATE, RADAR_MAX_GATE,
-                                                     RADAR_UNMANNED_SECONDS, 0));
-    Serial1.flush();
-    delay(100);
-    Serial1.write(frame, Ld2412Commands::motionSensitivity(frame, RADAR_MOTION_SENSITIVITY));
-    Serial1.flush();
-    delay(100);
-    Serial1.write(frame, Ld2412Commands::staticSensitivity(frame, RADAR_STATIC_SENSITIVITY));
-    Serial1.flush();
-    delay(100);
+    sendFrame(frame, Ld2412Commands::basicParams(frame, RADAR_MIN_GATE, RADAR_MAX_GATE,
+                                                 RADAR_UNMANNED_SECONDS, 0));
+    sendFrame(frame, Ld2412Commands::motionSensitivity(frame, RADAR_MOTION_SENSITIVITY));
+    sendFrame(frame, Ld2412Commands::staticSensitivity(frame, RADAR_STATIC_SENSITIVITY));
     sendCommand(Ld2412Commands::endConfig);
     Serial.println("radar: tuning applied");
 }

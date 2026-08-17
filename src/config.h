@@ -39,7 +39,7 @@ constexpr uint16_t GOTIFY_TIMEOUT_MS = 5000;
 
 // Sound detection: peak-to-peak ADC swing within one sample window.
 constexpr uint32_t SOUND_SAMPLE_WINDOW_MS = 50;
-constexpr int SOUND_PP_THRESHOLD = 1600; // ADC counts, tune to taste. Initial it was 800, but I changed it to 1600 to reduce false positives.
+constexpr int SOUND_PP_THRESHOLD = 1600; // ADC counts; a quiet room idles ~300
 constexpr uint32_t SOUND_NOTIFY_COOLDOWN_MS = 15000;
 
 // Lossless mono PCM stream. The ESP32-C3 ADC produces 12 useful bits; samples

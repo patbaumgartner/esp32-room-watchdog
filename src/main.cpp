@@ -14,34 +14,34 @@
 
 void setup()
 {
-  Serial.begin(115200);
-  if (!micBegin())
-  {
-    Serial.println("Fatal: microphone initialization failed");
-    while (true)
+    Serial.begin(115200);
+    if (!micBegin())
     {
-      delay(1000);
+        Serial.println("Fatal: microphone initialization failed");
+        while (true)
+        {
+            delay(1000);
+        }
     }
-  }
-  radarBegin();
-  calibrationButtonBegin();
+    radarBegin();
+    calibrationButtonBegin();
 
-  Serial.println("Sensor node booting...");
-  radarApplyTuning();
-  connectWifi();
-  apiBegin();
-  notifyBootOnline();
+    Serial.println("Sensor node booting...");
+    radarApplyTuning();
+    connectWifi();
+    apiBegin();
+    notifyBootOnline();
 }
 
 void loop()
 {
-  const LevelWindow mic = micSampleWindow();
-  const bool presentNow = radarPresenceDetected();
-  radarPoll();
+    const LevelWindow mic = micSampleWindow();
+    const bool presentNow = radarPresenceDetected();
+    radarPoll();
 
-  calibrationButtonPoll();
-  notifyPresenceChanges(presentNow);
-  notifyMovement();
-  notifyLoudSounds(mic);
-  logStatusEverySecond(presentNow, mic);
+    calibrationButtonPoll();
+    notifyPresenceChanges(presentNow);
+    notifyMovement();
+    notifyLoudSounds(mic);
+    logStatusEverySecond(presentNow, mic);
 }
