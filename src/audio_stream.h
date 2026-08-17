@@ -2,5 +2,13 @@
 
 #include <WiFi.h>
 
-// Writes the raw PCM response to an already authenticated HTTP client.
-void streamAudioPcm(WiFiClient client);
+enum class AudioStreamStartResult
+{
+    Started,
+    Busy,
+    ResourceFailure,
+};
+
+// Transfers an already authenticated client to a dedicated streaming task.
+// This lets WebServer return to accept() and reject concurrent recordings.
+AudioStreamStartResult startAudioPcmStream(const WiFiClient &client);

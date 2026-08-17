@@ -8,7 +8,14 @@ if (-not (Test-Path $pio)) { $pio = 'pio' }
 & $pio test -e native
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-& $pio check -e esp32-c3-supermini --fail-on-defect=medium --fail-on-defect=high
+& $pio run -e esp32-c3-supermini -t compiledb
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+& $pio pkg exec --package platformio/tool-cppcheck@1.21100.230717 -- `
+    cppcheck --project=compile_commands.json '--file-filter=src/*' `
+    --enable=warning,style,performance,portability `
+    --inline-suppr '--suppress=*:*platformio*packages*' `
+    --suppress=missingIncludeSystem --error-exitcode=1
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 & $pio run -e esp32-c3-supermini
