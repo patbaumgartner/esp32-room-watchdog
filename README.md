@@ -279,6 +279,7 @@ Actions are pinned to commit SHAs and kept current by Dependabot.
 - [x] LD2412 UART frame parser — presence notifications include distance
 - [x] LD2412 command protocol — per-gate sensitivity tuning + background calibration
 - [x] HTTP API — live status + remote calibration
+- [x] WebSocket telemetry + mDNS discovery — alerts and live data split
 - [ ] Enclosure / final assembly
 
 ## Contributing
@@ -290,3 +291,10 @@ reports go through [SECURITY.md](SECURITY.md).
 ## License
 
 [MIT](LICENSE)
+
+The firmware links two third-party libraries under the **LGPL-3.0**:
+[ESPAsyncWebServer](https://github.com/ESP32Async/ESPAsyncWebServer) and
+[AsyncTCP](https://github.com/ESP32Async/AsyncTCP). Building from source keeps
+you clear of their relinking requirement; if you redistribute a compiled
+`firmware.bin`, that obligation is yours to honour. Everything in this
+repository is MIT.

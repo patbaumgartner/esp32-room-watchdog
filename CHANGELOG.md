@@ -91,6 +91,19 @@ releases yet — flash `main`. Format follows
 
 ### Fixed
 
+- The telemetry socket no longer holds an `AsyncWebSocketClient*` across a
+  send. `AsyncWebSocket::client()` releases the library's client lock before
+  returning, and disconnects are processed on the AsyncTCP task, so the pointer
+  could be freed mid-frame. The loop now keeps only an atomic client id and
+  uses the id-based API, which locks for the whole lookup-and-send.
+- `radarReport()` returns a snapshot instead of a reference into the live
+  parser. `Ld2412Parser` fills its report field by field on the sensor loop, so
+  `GET /status` could mix a distance from one frame with an energy from the
+  next.
+- `POST /calibrate` and the socket's `calibrate` command no longer run the
+  radar command sequence inside a network callback, where its ~300ms of UART
+  waits would stall every other connection. Both set a flag that the sensor
+  loop acts on, which is the path the BOOT button already used.
 - API tokens are compared over their full length instead of stopping at the
   first differing byte, and a rejection no longer logs the expected length.
 - `deploy.ps1` runs the same gate as CI. It only ran the unit tests, so it
