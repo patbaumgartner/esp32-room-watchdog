@@ -50,13 +50,8 @@ namespace
         case AudioStreamStartResult::Started:
             return;
         case AudioStreamStartResult::Busy:
-            // A client that vanished without closing cleanly is only noticed when
-            // a write gives up, which Arduino's WiFiClient does after ten
-            // one-second select() retries. Say so rather than look wedged.
             audioServer.send(409, "application/json",
-                             "{\"error\":\"an audio stream is already active\","
-                             "\"hint\":\"if you just stopped a recording, retry in ~10s "
-                             "while the previous connection times out\"}");
+                             "{\"error\":\"an audio stream is already active\"}");
             return;
         case AudioStreamStartResult::ResourceFailure:
             audioServer.send(503, "application/json",
