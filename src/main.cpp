@@ -35,7 +35,7 @@ void setup()
   radarApplyTuning();
   connectWifi();
   gotifyBegin();
-  mdnsBegin();
+  netPoll();
   apiBegin();
   notifyBootOnline();
 }
@@ -45,6 +45,7 @@ void loop()
   const LevelWindow mic = micSampleWindow();
   const bool presentNow = radarPresenceDetected();
   radarPoll();
+  netPoll();
 
   calibrationButtonPoll();
   pollCalibrationRequest();

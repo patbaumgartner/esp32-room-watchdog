@@ -9,7 +9,7 @@ releases yet — flash `main`. Format follows
 ### Added
 
 - **Live telemetry over WebSocket at `GET /ws`.** The full sensor state streams
-  at up to 10Hz to one authenticated client, with `hello`, `telemetry` and
+  at up to 20Hz to one authenticated client, with `hello`, `telemetry` and
   `event` JSON messages, and `calibrate` accepted from the client. Frames are
   sent on change (never faster than `WS_MIN_PUSH_INTERVAL_MS`) with a forced
   heartbeat every `WS_HEARTBEAT_MS`, so a client can tell a quiet room from a
@@ -102,6 +102,18 @@ releases yet — flash `main`. Format follows
   depends on the obsolete `libpcre3` runtime.
 
 ### Fixed
+
+- A microphone that stops delivering samples no longer freezes everything else.
+  The sensor loop paces itself on the ADC window queue and waited there without
+  a timeout, so a wedged ADC took presence detection, radar draining, the
+  calibration button and telemetry down with it. The wait is now bounded, and
+  `GET /status` reports an empty mic window rather than the last levels seen
+  before the stall.
+- mDNS and the NTP clock sync now start whenever WiFi first connects, not only
+  when it connects during `setup()`. A node that missed
+  `WIFI_CONNECT_TIMEOUT_MS` at boot stayed without `watchdog.local` and without
+  the clock TLS validation needs — permanently, even after the station
+  reconnected on its own, which left every HTTPS push failing.
 
 - **The sensor loop ran at 0.4Hz instead of 20Hz whenever no serial monitor was
   attached.** `Serial.printf()` on the USB CDC blocks for up to ~2 seconds when

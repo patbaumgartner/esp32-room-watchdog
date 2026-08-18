@@ -86,24 +86,33 @@ online" alert. Then `loop()` repeats forever:
 1. **`micSampleWindow()`** — waits for the next 50ms `LevelWindow` produced by
   the dedicated ADC task. Hardware-timed DMA sampling continues at 48kHz
   while the loop performs network work, so short sounds cannot fall into a
-  scheduling gap. The last completed window is kept for the HTTP API.
+  scheduling gap. The last completed window is kept for the HTTP API. The
+  wait is bounded at five windows: the loop takes its pace from here, so an
+  ADC that stopped delivering would otherwise stop presence detection, radar
+  draining and telemetry with it. After the timeout the loop carries on with
+  an empty window and `GET /status` reports that instead of stale levels.
 2. **`radarPoll()`** — feeds pending LD2412 UART bytes into `Ld2412Parser`
    for distance/energy reports.
-3. **`calibrationButtonPoll()`** — BOOT button held ~1s requests radar
+3. **`netPoll()`** — starts the services that need an address, the first time
+   WiFi is up. Doing that only in `setup()` meant a node that missed
+   `WIFI_CONNECT_TIMEOUT_MS` at boot never announced `watchdog.local` and
+   never got the clock TLS validation needs, even once the station
+   reconnected by itself.
+4. **`calibrationButtonPoll()`** — BOOT button held ~1s requests radar
    background calibration (also available via `POST /calibrate` and the `ws`
    `calibrate` command).
-4. **`pollCalibrationRequest()`** — runs a pending calibration request here,
+5. **`pollCalibrationRequest()`** — runs a pending calibration request here,
    on the sensor loop.
-5. **`notifyPresenceChanges()`** — feeds the radar pin into `PresenceMonitor`;
+6. **`notifyPresenceChanges()`** — feeds the radar pin into `PresenceMonitor`;
    alerts "Person detected at X" / "Presence cleared" on debounced edges.
-6. **`notifyMovement()`** — while present, `DistanceTracker` emits "Person
+7. **`notifyMovement()`** — while present, `DistanceTracker` emits "Person
    moved to X" when the distance shifts beyond `DISTANCE_DELTA_CM`. Live sink
    only — the socket already streams position continuously.
-7. **`notifyLoudSounds()`** — feeds the window's peak-to-peak into
+8. **`notifyLoudSounds()`** — feeds the window's peak-to-peak into
    `SoundDetector`; alerts "Sound detected" above threshold, then cools down.
-8. **`wsPublishTelemetry()`** — builds the sensor snapshot and hands it to the
+9. **`wsPublishTelemetry()`** — builds the sensor snapshot and hands it to the
    socket when `TelemetryGate` says it changed or the heartbeat is due.
-9. **`logStatusEverySecond()`** — one diagnostic line per second on serial.
+10. **`logStatusEverySecond()`** — one diagnostic line per second on serial.
 
 One pass takes ~50ms because it waits for the next mic window. Nothing in the
 loop blocks on the network: pushes are queued for a worker task, and telemetry

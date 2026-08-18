@@ -32,6 +32,9 @@ namespace
     SemaphoreHandle_t queueLock = nullptr;
     SemaphoreHandle_t queueSignal = nullptr;
 
+    // Touched by netPoll() only, which runs on the sensor loop.
+    bool servicesStarted = false;
+
     void logWifiDisconnect(arduino_event_id_t, arduino_event_info_t info)
     {
         Serial.printf("WiFi: disconnected (reason %u)\n",
@@ -56,6 +59,19 @@ namespace
             Serial.print('.');
         }
         Serial.println(time(nullptr) > 8 * 3600 * 2 ? " ok" : " timeout (HTTPS pushes will fail)");
+    }
+
+    void startMdns()
+    {
+        if (!MDNS.begin(MDNS_HOSTNAME))
+        {
+            Serial.println("mDNS: responder failed to start");
+            return;
+        }
+        MDNS.addService("http", "tcp", API_PORT);
+        MDNS.addService("ws", "tcp", API_PORT);
+        Serial.printf("mDNS: http://%s.local and ws://%s.local/ws\n",
+                      MDNS_HOSTNAME, MDNS_HOSTNAME);
     }
 
     // Runs on the delivery worker only. Blocking here is fine; blocking on the
@@ -169,33 +185,27 @@ void connectWifi()
     if (WiFi.status() == WL_CONNECTED)
     {
         Serial.printf("WiFi: connected, IP %s\n", WiFi.localIP().toString().c_str());
-        if (gotifyUsesTls())
-        {
-            syncClock();
-        }
     }
     else
     {
+        // The station keeps retrying on its own, so netPoll() picks the
+        // connection up whenever it finally arrives.
         Serial.println("WiFi: connection failed (timeout)");
     }
 }
 
-void mdnsBegin()
+void netPoll()
 {
-    if (WiFi.status() != WL_CONNECTED)
+    if (servicesStarted || WiFi.status() != WL_CONNECTED)
     {
-        Serial.println("mDNS: skipped, WiFi not connected");
         return;
     }
-    if (!MDNS.begin(MDNS_HOSTNAME))
+    servicesStarted = true;
+    startMdns();
+    if (gotifyUsesTls())
     {
-        Serial.println("mDNS: responder failed to start");
-        return;
+        syncClock();
     }
-    MDNS.addService("http", "tcp", API_PORT);
-    MDNS.addService("ws", "tcp", API_PORT);
-    Serial.printf("mDNS: http://%s.local and ws://%s.local/ws\n",
-                  MDNS_HOSTNAME, MDNS_HOSTNAME);
 }
 
 void gotifyBegin()

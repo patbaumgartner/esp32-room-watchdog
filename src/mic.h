@@ -8,7 +8,8 @@
 // Starts hardware-timed ADC/DMA sampling of the MAX9814.
 bool micBegin();
 
-// Waits for the next completed SOUND_SAMPLE_WINDOW_MS level window.
+// Waits for the next completed SOUND_SAMPLE_WINDOW_MS level window. Returns an
+// empty window if the ADC stops delivering, so the caller's loop keeps running.
 LevelWindow micSampleWindow();
 
 // Most recent window, for observers outside the loop (e.g. the HTTP API).

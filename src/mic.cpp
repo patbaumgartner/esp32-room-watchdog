@@ -22,6 +22,10 @@ namespace
     constexpr uint32_t WINDOW_SAMPLES =
         AUDIO_SAMPLE_RATE_HZ * SOUND_SAMPLE_WINDOW_MS / 1000;
 
+    // Five windows: far beyond the ~50ms a healthy ADC needs, short enough
+    // that a wedged one costs the loop a quarter second rather than forever.
+    constexpr uint32_t WINDOW_WAIT_TIMEOUT_MS = 5 * SOUND_SAMPLE_WINDOW_MS;
+
     static_assert(AUDIO_SAMPLE_RATE_HZ * SOUND_SAMPLE_WINDOW_MS % 1000 == 0,
                   "Sound window must contain a whole number of samples");
 
@@ -210,9 +214,21 @@ bool micBegin()
 LevelWindow micSampleWindow()
 {
     LevelWindow window;
-    if (windowQueue != nullptr)
+    if (windowQueue == nullptr)
     {
-        xQueueReceive(windowQueue, &window, portMAX_DELAY);
+        return window;
+    }
+    // The sensor loop takes its pace from this queue, so waiting forever would
+    // hand a stalled ADC the power to stop presence detection, radar draining
+    // and telemetry too. On timeout the caller gets an empty window and the
+    // published one is cleared with it, so `GET /status` reports the silence
+    // instead of the last levels seen before the stall.
+    if (xQueueReceive(windowQueue, &window,
+                      pdMS_TO_TICKS(WINDOW_WAIT_TIMEOUT_MS)) != pdTRUE)
+    {
+        portENTER_CRITICAL(&stateMux);
+        lastWindow = window;
+        portEXIT_CRITICAL(&stateMux);
     }
     return window;
 }
