@@ -49,6 +49,10 @@ full authentication matrix, and a 10-second throughput measurement.
 bash .github/skills/verify-on-device/scripts/probe.sh
 ```
 
+From WSL2, pass the device IP instead. WSL has no mDNS resolver, so
+`watchdog.local` never resolves there however healthy the node is — Windows
+resolves the same name fine. The script says which of the two failed.
+
 Write multi-step device checks into a script file rather than chaining them
 inline — this shell mangles `; echo` after a quoted URL into a literal `\;`,
 which produces phantom `404`s that look like firmware bugs.

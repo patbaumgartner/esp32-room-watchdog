@@ -26,6 +26,19 @@ sleep 1
 echo "== status =="
 STATUS=$(curl -s -m 8 "${AUTH[@]}" "http://$HOST/status")
 if [ -z "$STATUS" ]; then
+  # WSL ships "hosts: files dns" and no avahi, so a .local name never resolves
+  # there however healthy the node is. Saying "no response" sends the next
+  # person hunting a firmware bug that is not there.
+  case "$HOST" in
+  *.local)
+    if ! getent hosts "$HOST" >/dev/null 2>&1; then
+      echo "  $HOST did not resolve — this is the resolver, not the device." >&2
+      echo "  WSL2 has no mDNS resolver; Windows resolves the same name fine." >&2
+      echo "  Pass the IP instead: probe.sh 192.168.1.42" >&2
+      exit 1
+    fi
+    ;;
+  esac
   echo "  no response from $HOST" >&2
   exit 1
 fi
