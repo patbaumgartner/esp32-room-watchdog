@@ -8,6 +8,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
+#include <atomic>
 #include <time.h>
 #include <string.h>
 
@@ -19,13 +20,16 @@
 
 namespace
 {
-    uint32_t lastFailureMs = 0;
-    bool hadFailure = false;
+    // Written by the delivery worker, read from the API and sensor-loop tasks.
+    // undeliverable is also incremented by queueGotify() on a third task, so a
+    // plain ++ could lose a count.
+    std::atomic<uint32_t> lastFailureMs{0};
+    std::atomic<bool> hadFailure{false};
+    std::atomic<uint32_t> undeliverable{0};
 
     NotificationQueue<GOTIFY_QUEUE_DEPTH, GOTIFY_MESSAGE_MAX> pending;
     SemaphoreHandle_t queueLock = nullptr;
     SemaphoreHandle_t queueSignal = nullptr;
-    uint32_t undeliverable = 0;
 
     void logWifiDisconnect(arduino_event_id_t, arduino_event_info_t info)
     {
