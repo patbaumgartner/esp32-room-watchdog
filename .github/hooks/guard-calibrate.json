@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "type": "command",
+        "command": "python3 .github/hooks/scripts/guard-calibrate.py",
+        "windows": "python .github/hooks/scripts/guard-calibrate.py",
+        "timeout": 10
+      }
+    ]
+  }
+}
