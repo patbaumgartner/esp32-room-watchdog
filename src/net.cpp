@@ -16,6 +16,7 @@
 
 #include "certs.h"
 #include "config.h"
+#include "json_escape.h"
 #include "secrets.h"
 
 namespace
@@ -40,14 +41,6 @@ namespace
     bool gotifyUsesTls()
     {
         return strncmp(GOTIFY_URL, "https:", 6) == 0;
-    }
-
-    String jsonEscape(const String &s)
-    {
-        String out = s;
-        out.replace("\\", "\\\\");
-        out.replace("\"", "\\\"");
-        return out;
     }
 
     // TLS cert validation compares against the clock; without NTP the ESP32

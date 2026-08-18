@@ -5,6 +5,7 @@
 #include <TelemetryGate.h>
 
 #include "config.h"
+#include "json_escape.h"
 #include "notifications.h"
 #include "sensor_snapshot.h"
 
@@ -28,14 +29,6 @@ namespace
         appendSensorFields(json, snapshot, nowMs);
         json += "}";
         return json;
-    }
-
-    String jsonEscape(const String &s)
-    {
-        String out = s;
-        out.replace("\\", "\\\\");
-        out.replace("\"", "\\\"");
-        return out;
     }
 
     void sendHello(AsyncWebSocketClient *client)

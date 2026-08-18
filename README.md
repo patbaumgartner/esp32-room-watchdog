@@ -257,6 +257,7 @@ esp32-room-watchdog/
 │   ├── calibration_button.cpp#   BOOT button → calibration
 │   ├── status_log.cpp / .h   #   1Hz serial diagnostics
 │   ├── net.cpp / net.h       #   WiFi, mDNS, queued Gotify delivery (TLS)
+│   ├── json_escape.cpp / .h  #   one JSON string escaper for both renderers
 │   ├── certs.h               #   Let's Encrypt root CA for TLS validation
 │   └── secrets.h.example     #   template for credentials (gitignored copy)
 ├── test/                     # native Unity tests for lib/
