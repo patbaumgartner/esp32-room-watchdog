@@ -109,6 +109,12 @@ One pass takes ~50ms because it waits for the next mic window. Nothing in the
 loop blocks on the network: pushes are queued for a worker task, and telemetry
 frames are dropped rather than buffered when the socket is backed up.
 
+Serial is the one thing that did block. A USB CDC write waits up to ~2s when
+the host is not reading the port, so the once-per-second status log dragged the
+whole loop down to 0.4Hz whenever no monitor was attached — starving presence
+detection, radar UART draining and telemetry alike. `setup()` now calls
+`Serial.setTxTimeoutMs(0)`, which makes diagnostics lossy instead of blocking.
+
 ## Crossing the task boundary
 
 AsyncTCP runs handler callbacks on its own task, and blocking that task stalls

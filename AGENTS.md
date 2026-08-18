@@ -54,6 +54,11 @@ suppressing findings from vendored code under `.pio/libdeps`.
   Sensor accessors already return guarded copies, which is why a handler may
   call them. `net.cpp`'s push counters are `std::atomic` because the delivery
   worker, the API task and the sensor loop all touch them.
+- **Serial output can stall the sensor loop.** USB CDC writes block for up to
+  ~2s when the host is not draining the port, and that once starved the loop
+  to 0.4Hz. `setup()` calls `Serial.setTxTimeoutMs(0)` so diagnostics drop
+  instead of blocking — do not remove it, and do not add serial output to a
+  hot path.
 - **`GET /audio.pcm` lives on a synchronous server on port 81, deliberately.**
   `WebServer.h` and `ESPAsyncWebServer.h` both define `HTTP_GET`, so they must
   stay in separate translation units. Do not fold it into the async server:

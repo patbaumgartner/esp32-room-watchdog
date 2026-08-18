@@ -41,6 +41,11 @@ releases yet — flash `main`. Format follows
 
 ### Changed
 
+- `WS_MIN_PUSH_INTERVAL_MS` is 50 rather than 100, so live telemetry tracks the
+  mic window instead of halving it. The sensor loop produces one reading per
+  `SOUND_SAMPLE_WINDOW_MS`, so a smaller floor would only resend unchanged
+  values.
+
 - `GET /status` and the WebSocket `telemetry` frame render one shared payload
   via `takeSensorSnapshot()` / `appendSensorFields()` in
   `src/sensor_snapshot.h`, instead of listing the same thirteen fields in two
@@ -97,6 +102,15 @@ releases yet — flash `main`. Format follows
   depends on the obsolete `libpcre3` runtime.
 
 ### Fixed
+
+- **The sensor loop ran at 0.4Hz instead of 20Hz whenever no serial monitor was
+  attached.** `Serial.printf()` on the USB CDC blocks for up to ~2 seconds when
+  the host is not draining the port (`tx_timeout_ms` × `max_consec_timeouts` in
+  `HWCDC::write`), and the once-per-second status log hit that on every pass.
+  Everything driven by the loop was starved with it: presence and sound
+  detection, radar UART draining, and telemetry. `Serial.setTxTimeoutMs(0)`
+  makes diagnostics drop instead of stall. Measured telemetry went from 0.5Hz
+  to 13.8Hz.
 
 - The Gotify push counters are `std::atomic`. `undeliverable` was incremented
   from both the delivery worker and whichever task called `queueGotify()`, so

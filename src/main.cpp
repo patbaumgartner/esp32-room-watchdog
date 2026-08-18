@@ -16,6 +16,10 @@
 void setup()
 {
   Serial.begin(115200);
+  // USB CDC writes block for ~2s when the host is not draining the port, which
+  // stalled the whole sensor loop whenever no monitor was attached. Diagnostics
+  // are not worth a stalled control loop, so drop them instead.
+  Serial.setTxTimeoutMs(0);
   if (!micBegin())
   {
     Serial.println("Fatal: microphone initialization failed");
