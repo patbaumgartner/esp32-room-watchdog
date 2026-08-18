@@ -18,7 +18,7 @@ cloud account, no third-party service in the loop.
   than a configurable distance
 - **Sound detection** — MAX9814 mic, peak-to-peak loudness with threshold +
   cooldown so a noisy room doesn't flood your phone
-- **Live telemetry over WebSocket** — the full sensor state at up to 10Hz for a
+- **Live telemetry over WebSocket** — the full sensor state at up to 20Hz for a
   dashboard or native app, on the same authenticated port as the REST API
 - **Alerts that survive the network** — presence, sound and boot events are
   queued on the device and retried by a worker task, so detection never waits
@@ -143,7 +143,7 @@ Notifications and live data are deliberately split:
   is queued on the device and retried, so an event survives a slow server, a
   WiFi blip, or a phone that is asleep or away from home.
 - **The WebSocket** answers *"what is happening this second?"* — the full
-  sensor state at up to 10Hz. Frames are disposable: if nobody is listening or
+  sensor state at up to 20Hz. Frames are disposable: if nobody is listening or
   the socket is backed up, they are dropped rather than buffered.
 
 That is why movement updates ("Person moved to 2.7m") no longer reach your
