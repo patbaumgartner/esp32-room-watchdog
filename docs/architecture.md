@@ -121,11 +121,22 @@ acknowledgements, which was harmless on the old dedicated server task and is
 not harmless here. The BOOT button goes through the same request path, so
 there is one way to start a calibration rather than two.
 
-**Handlers never read sensor state.** If callbacks called `radarReport()` and
-`micLastWindow()` directly, every sensor value would become shared mutable
-state across three tasks. Instead `wsPublishTelemetry()` runs on the sensor
-loop, snapshots the values there, renders the JSON, and hands a finished
-string to the socket.
+**Sensor reads are safe from any task; sensor *state* is not shared directly.**
+Every accessor — `radarReport()`, `micLastWindow()`, `micDroppedSamples()`,
+`pushBackingOff()` — returns a copy taken under a critical section or an
+atomic, so `GET /status` can build its response straight from the AsyncTCP
+task. What does not happen is a handler reaching into a live structure while
+another task writes it: `radarPoll()` fills the parser field by field and
+publishes a finished `Report` in one guarded copy.
+
+`wsPublishTelemetry()` still runs on the sensor loop, for a different reason —
+`TelemetryGate` is loop-task-local, so the send decision and the frame it
+produces stay on one task.
+
+Both paths go through `takeSensorSnapshot()` and `appendSensorFields()` in
+[`src/sensor_snapshot.h`](../src/sensor_snapshot.h), so the REST payload and
+the socket frame cannot drift apart. They did once: `pushLost` was added to
+`/status` and not to the socket.
 
 **The loop never holds a client handle.** `AsyncWebSocket::client()` returns a
 raw pointer after releasing the library's client lock, and `_handleDisconnect()`

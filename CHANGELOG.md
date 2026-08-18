@@ -41,6 +41,14 @@ releases yet — flash `main`. Format follows
 
 ### Changed
 
+- `GET /status` and the WebSocket `telemetry` frame render one shared payload
+  via `takeSensorSnapshot()` / `appendSensorFields()` in
+  `src/sensor_snapshot.h`, instead of listing the same thirteen fields in two
+  files. That duplication is how `pushLost` came to exist on the REST endpoint
+  and not on the socket. `telemetryClient` stays specific to `/status`, so it
+  now appears after `uptimeMs` rather than mid-object; JSON field order is not
+  significant.
+
 - `GET /audio.pcm` is served by a synchronous `WebServer` on port 81 while the
   REST API and WebSocket moved to `ESPAsyncWebServer` on port 80. A recording
   holds its socket for minutes, which an async handler must never do.
@@ -89,6 +97,11 @@ releases yet — flash `main`. Format follows
   depends on the obsolete `libpcre3` runtime.
 
 ### Fixed
+
+- The Gotify push counters are `std::atomic`. `undeliverable` was incremented
+  from both the delivery worker and whichever task called `queueGotify()`, so
+  a lost message could go uncounted, and `pushBackingOff()` read two unguarded
+  variables from a different task than the one writing them.
 
 - The telemetry socket no longer holds an `AsyncWebSocketClient*` across a
   send. `AsyncWebSocket::client()` releases the library's client lock before

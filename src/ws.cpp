@@ -5,10 +5,8 @@
 #include <TelemetryGate.h>
 
 #include "config.h"
-#include "mic.h"
-#include "net.h"
 #include "notifications.h"
-#include "radar.h"
+#include "sensor_snapshot.h"
 
 namespace
 {
@@ -24,65 +22,10 @@ namespace
     // if the client disconnected between the lookup and the send.
     std::atomic<uint32_t> activeClientId{0};
 
-    // Everything the client is told except uptimeMs, so change detection covers
-    // the whole frame and a ticking clock alone never counts as a change.
-    // Packed because padding bytes would hash as noise.
-    struct __attribute__((packed)) Snapshot
+    String telemetryJson(const SensorSnapshot &snapshot, uint32_t nowMs)
     {
-        uint8_t presence;
-        uint8_t targetState;
-        uint16_t movingDistanceCm;
-        uint8_t movingEnergy;
-        uint16_t stationaryDistanceCm;
-        uint8_t stationaryEnergy;
-        int16_t micPeakToPeak;
-        int16_t micMin;
-        int16_t micMax;
-        uint32_t audioDroppedSamples;
-        uint32_t pushLost;
-        uint8_t audioStreaming;
-        uint8_t pushBackingOff;
-    };
-
-    Snapshot takeSnapshot(bool presenceNow, const LevelWindow &mic)
-    {
-        const Ld2412Parser::Report radar = radarReport();
-        Snapshot snapshot = {};
-        snapshot.presence = presenceNow ? 1 : 0;
-        snapshot.targetState = radar.targetState;
-        snapshot.movingDistanceCm = radar.movingDistanceCm;
-        snapshot.movingEnergy = radar.movingEnergy;
-        snapshot.stationaryDistanceCm = radar.stationaryDistanceCm;
-        snapshot.stationaryEnergy = radar.stationaryEnergy;
-        snapshot.micPeakToPeak = static_cast<int16_t>(mic.peakToPeak());
-        snapshot.micMin = static_cast<int16_t>(mic.minLevel());
-        snapshot.micMax = static_cast<int16_t>(mic.maxLevel());
-        snapshot.audioDroppedSamples = micDroppedSamples();
-        snapshot.pushLost = pushLostCount();
-        snapshot.audioStreaming = micPcmStreaming() ? 1 : 0;
-        snapshot.pushBackingOff = pushBackingOff() ? 1 : 0;
-        return snapshot;
-    }
-
-    String telemetryJson(const Snapshot &snapshot, uint32_t nowMs)
-    {
-        String json;
-        json.reserve(320); // one allocation per frame instead of a dozen
-        json = "{\"type\":\"telemetry\"";
-        json += ",\"presence\":" + String(snapshot.presence ? "true" : "false");
-        json += ",\"targetState\":" + String(snapshot.targetState);
-        json += ",\"movingDistanceCm\":" + String(snapshot.movingDistanceCm);
-        json += ",\"movingEnergy\":" + String(snapshot.movingEnergy);
-        json += ",\"stationaryDistanceCm\":" + String(snapshot.stationaryDistanceCm);
-        json += ",\"stationaryEnergy\":" + String(snapshot.stationaryEnergy);
-        json += ",\"micPeakToPeak\":" + String(snapshot.micPeakToPeak);
-        json += ",\"micMin\":" + String(snapshot.micMin);
-        json += ",\"micMax\":" + String(snapshot.micMax);
-        json += ",\"audioStreaming\":" + String(snapshot.audioStreaming ? "true" : "false");
-        json += ",\"audioDroppedSamples\":" + String(snapshot.audioDroppedSamples);
-        json += ",\"pushBackingOff\":" + String(snapshot.pushBackingOff ? "true" : "false");
-        json += ",\"pushLost\":" + String(snapshot.pushLost);
-        json += ",\"uptimeMs\":" + String(nowMs);
+        String json = "{\"type\":\"telemetry\",";
+        appendSensorFields(json, snapshot, nowMs);
         json += "}";
         return json;
     }
@@ -206,7 +149,7 @@ void wsPublishTelemetry(bool presenceNow, const LevelWindow &mic)
         servedClientId = id;
     }
 
-    const Snapshot snapshot = takeSnapshot(presenceNow, mic);
+    const SensorSnapshot snapshot = takeSensorSnapshot(presenceNow, mic);
     const uint32_t fingerprint = telemetryFingerprint(&snapshot, sizeof(snapshot));
     const uint32_t now = millis();
     if (!gate.shouldSend(fingerprint, now) || !socket.availableForWrite(id))

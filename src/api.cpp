@@ -7,10 +7,10 @@
 #include "audio_api.h"
 #include "config.h"
 #include "mic.h"
-#include "net.h"
 #include "notifications.h"
 #include "radar.h"
 #include "secrets.h"
+#include "sensor_snapshot.h"
 #include "ws.h"
 
 // An empty or guessable token would leave the LAN API wide open.
@@ -65,26 +65,10 @@ namespace
 
     String statusJson()
     {
-        const Ld2412Parser::Report radar = radarReport();
-        const LevelWindow mic = micLastWindow();
-        String json;
-        json.reserve(384);
-        json = "{";
-        json += "\"presence\":" + String(radarPresenceDetected() ? "true" : "false");
-        json += ",\"targetState\":" + String(radar.targetState);
-        json += ",\"movingDistanceCm\":" + String(radar.movingDistanceCm);
-        json += ",\"movingEnergy\":" + String(radar.movingEnergy);
-        json += ",\"stationaryDistanceCm\":" + String(radar.stationaryDistanceCm);
-        json += ",\"stationaryEnergy\":" + String(radar.stationaryEnergy);
-        json += ",\"micPeakToPeak\":" + String(mic.peakToPeak());
-        json += ",\"micMin\":" + String(mic.minLevel());
-        json += ",\"micMax\":" + String(mic.maxLevel());
-        json += ",\"audioStreaming\":" + String(micPcmStreaming() ? "true" : "false");
-        json += ",\"audioDroppedSamples\":" + String(micDroppedSamples());
+        String json = "{";
+        appendSensorFields(json, takeSensorSnapshot(radarPresenceDetected(), micLastWindow()),
+                           millis());
         json += ",\"telemetryClient\":" + String(wsClientConnected() ? "true" : "false");
-        json += ",\"pushBackingOff\":" + String(pushBackingOff() ? "true" : "false");
-        json += ",\"pushLost\":" + String(pushLostCount());
-        json += ",\"uptimeMs\":" + String(millis());
         json += "}";
         return json;
     }
