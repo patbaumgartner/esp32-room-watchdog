@@ -55,9 +55,13 @@ void test_reset_serves_a_reconnecting_client_immediately()
 void test_millis_rollover_does_not_stall_the_stream()
 {
     TelemetryGate gate(100, 2000);
-    const uint32_t beforeRollover = 0xFFFFFF00u;
+    const uint32_t beforeRollover = 0xFFFFFF00u; // 256ms of runtime left
     gate.sent(0xAAAA, beforeRollover);
-    TEST_ASSERT_TRUE(gate.shouldSend(0xBBBB, beforeRollover + 200)); // wraps past zero
+    // A heartbeat kept as an absolute deadline would have wrapped to a tiny
+    // number here and fired on every pass.
+    TEST_ASSERT_FALSE(gate.shouldSend(0xAAAA, beforeRollover + 100));
+    TEST_ASSERT_TRUE(gate.shouldSend(0xBBBB, beforeRollover + 300));  // past zero
+    TEST_ASSERT_TRUE(gate.shouldSend(0xAAAA, beforeRollover + 2000)); // heartbeat
 }
 
 void test_fingerprint_distinguishes_payloads()

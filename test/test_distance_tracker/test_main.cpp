@@ -69,6 +69,18 @@ void test_reset_requires_new_baseline()
     TEST_ASSERT_TRUE(t.onDistance(600, 40000));
 }
 
+void test_millis_rollover_does_not_block_updates()
+{
+    DistanceTracker t(100, 10000);
+    const uint32_t beforeRollover = 0xFFFFFF00u; // 256ms of runtime left
+    t.onDistance(150, beforeRollover);
+    // An interval kept as an absolute deadline would have wrapped to a tiny
+    // number here and let the update through 10 seconds early.
+    TEST_ASSERT_FALSE(t.onDistance(400, beforeRollover + 100));
+    TEST_ASSERT_FALSE(t.onDistance(400, beforeRollover + 9999)); // past zero
+    TEST_ASSERT_TRUE(t.onDistance(400, beforeRollover + 10000));
+}
+
 int main()
 {
     UNITY_BEGIN();
@@ -80,5 +92,6 @@ int main()
     RUN_TEST(test_sent_update_becomes_new_baseline);
     RUN_TEST(test_failed_send_retries);
     RUN_TEST(test_reset_requires_new_baseline);
+    RUN_TEST(test_millis_rollover_does_not_block_updates);
     return UNITY_END();
 }
