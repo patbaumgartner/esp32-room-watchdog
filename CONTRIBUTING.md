@@ -54,6 +54,10 @@ green pipeline.
 - **Hardware and network I/O stays in src/** — thin glue only. Anything called
   from an AsyncTCP callback must not block; defer it to the sensor loop.
 - **Every class in lib/ gets a test** in [test/](test/) (Unity, runs natively).
+  Anything comparing durations needs a case near `0xFFFFFFFF`: written as
+  `nowMs - lastMs >= interval` the `millis()` rollover every ~49.7 days is
+  harmless, and written as `nowMs >= lastMs + interval` it is not, but the two
+  are indistinguishable until it happens.
 - **Tuning constants live in [src/config.h](src/config.h)**, credentials in
   the gitignored `src/secrets.h`. Never commit real credentials.
 

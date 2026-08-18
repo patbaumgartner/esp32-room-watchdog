@@ -30,6 +30,7 @@ flowchart LR
         NOTIF[notifications.cpp<br/>events → alert vs live]
         API[api.cpp<br/>async REST, port 80]
         WSG[ws.cpp<br/>telemetry socket]
+        SNAP[sensor_snapshot.cpp<br/>one payload, both renderers]
         CBTN[calibration_button.cpp<br/>hold → calibrate]
         SLOG[status_log.cpp<br/>serial diagnostics]
         NET[net.cpp<br/>WiFi + mDNS + push queue]
@@ -63,6 +64,8 @@ flowchart LR
     API --> AT
     API --> AAPI
     API --> WSG
+    API --> SNAP
+    WSG --> SNAP
     WSG --> TG
     LOOP --> CBTN
     LOOP --> SLOG

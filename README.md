@@ -254,6 +254,7 @@ esp32-room-watchdog/
 │   ├── notifications.cpp / .h#   detector events → alert vs live routing
 │   ├── api.cpp / .h          #   async REST API (authentication + handlers)
 │   ├── ws.cpp / .h           #   WebSocket telemetry + events
+│   ├── sensor_snapshot.cpp   #   one payload for /status and telemetry
 │   ├── calibration_button.cpp#   BOOT button → calibration
 │   ├── status_log.cpp / .h   #   1Hz serial diagnostics
 │   ├── net.cpp / net.h       #   WiFi, mDNS, queued Gotify delivery (TLS)

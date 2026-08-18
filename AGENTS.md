@@ -40,6 +40,11 @@ suppressing findings from vendored code under `.pio/libdeps`.
   and the sensor loop does the work — see `requestCalibration()` /
   `pollCalibrationRequest()`. The rationale is in the architecture doc under
   "Crossing the task boundary".
+- **Nothing in the sensor loop may wait without a timeout.** The loop paces
+  itself on `micSampleWindow()`, so an unbounded wait there hands a stalled
+  subsystem the power to stop presence detection, radar draining and telemetry
+  with it — and the async server keeps answering `/status` throughout, so the
+  node looks alive while its values are frozen.
 - **Never hold an `AsyncWebSocketClient*` outside the callback that gave it to
   you.** The library releases its client lock before returning the pointer and
   disconnects are processed on another task. Use the id-based API.
