@@ -75,5 +75,12 @@ SLOT=$(curl -s -m 8 "${AUTH[@]}" "http://$HOST/status" | grep -oE '"audioStreami
 echo "  audioStreaming=$SLOT (expect false)"
 [ "$SLOT" = "false" ] || { echo "    ^ SLOT STILL HELD" >&2; fail=1; }
 
+echo "== telemetry rate =="
+if command -v node >/dev/null 2>&1; then
+  node "$(dirname "${BASH_SOURCE[0]}")/telemetry-rate.js" "$HOST" 10 || fail=1
+else
+  echo "  skipped (node not on PATH)"
+fi
+
 [ "$fail" -eq 0 ] && echo "ALL CHECKS PASSED" || echo "SOME CHECKS FAILED" >&2
 exit "$fail"

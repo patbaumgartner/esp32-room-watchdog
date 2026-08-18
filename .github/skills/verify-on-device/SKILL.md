@@ -60,11 +60,17 @@ which produces phantom `404`s that look like firmware bugs.
 | `audioDroppedSamples` during a recording     | `0`                     |
 | Audio throughput                             | ~94 kB/s                |
 | Recording slot freed after client disconnect | < ~50 ms                |
+| Telemetry rate on `/ws`                      | ~14 Hz                  |
 | Every endpoint, no/wrong token               | `401`                   |
 | `/ws` handshake, no token                    | `401`; with token `101` |
 
 A dropped-sample count above zero on a LAN recording means the change
 regressed the stream — investigate before committing.
+
+Telemetry collapsing toward the 0.5 Hz heartbeat means something is stalling
+the sensor loop, not that the socket is broken. A blocking `Serial.printf()`
+did exactly that once, dragging the loop from 20 Hz to 0.4 Hz and starving
+presence detection with it.
 
 ## Cautions
 
