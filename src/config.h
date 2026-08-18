@@ -45,7 +45,10 @@ constexpr bool TRUST_PROXY_HEADERS = false;
 
 // Live telemetry socket: push on change, no faster than this, and always at
 // least once per heartbeat so a client can distinguish "quiet" from "dead".
-constexpr uint32_t WS_MIN_PUSH_INTERVAL_MS = 100;
+// The floor matches SOUND_SAMPLE_WINDOW_MS because the sensor loop produces
+// one new reading per mic window — asking for less would only resend the same
+// values.
+constexpr uint32_t WS_MIN_PUSH_INTERVAL_MS = 50;
 constexpr uint32_t WS_HEARTBEAT_MS = 2000;
 
 // Longest client command accepted on the socket. Anything larger is refused

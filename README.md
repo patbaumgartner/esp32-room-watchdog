@@ -92,7 +92,7 @@ All tuning knobs live in [src/config.h](src/config.h):
 | `RADAR_MIN_GATE` / `RADAR_MAX_GATE` | `1` / `8` | Detection range in 0.75m gates (8 = 6m) |
 | `RADAR_UNMANNED_SECONDS` | `5` | Radar-side hold time before reporting "unmanned" |
 | `RADAR_MOTION_SENSITIVITY` / `RADAR_STATIC_SENSITIVITY` | per-gate arrays | Energy thresholds per gate (0–100, higher = less sensitive) |
-| `WS_MIN_PUSH_INTERVAL_MS` | `100` | Fastest telemetry frame rate on the socket |
+| `WS_MIN_PUSH_INTERVAL_MS` | `50` | Fastest telemetry frame rate on the socket |
 | `WS_HEARTBEAT_MS` | `2000` | Frame sent even when nothing changed |
 | `WS_COMMAND_MAX` | `32` | Longest client command accepted, refused before it is copied |
 | `GOTIFY_QUEUE_DEPTH` | `8` | Pending pushes held on the device; the oldest is discarded when full |
