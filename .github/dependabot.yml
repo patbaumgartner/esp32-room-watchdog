@@ -1,5 +1,8 @@
 version: 2
 updates:
+  # Keeps the SHA-pinned actions in ci.yml current (updates SHA + version
+  # comment). PlatformIO has no Dependabot ecosystem, so the espressif32
+  # platform and the pinned lib_deps in platformio.ini are bumped by hand.
 - package-ecosystem: github-actions
   directory: /
   schedule:
@@ -10,7 +13,8 @@ updates:
   groups:
     github-actions:
       patterns:
-      - '*'
+      - "*"
     multi-step-actions:
       patterns:
+      - actions/cache/*
       - github/codeql-action/*
